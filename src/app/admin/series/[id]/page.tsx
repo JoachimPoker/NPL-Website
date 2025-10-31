@@ -1,656 +1,963 @@
-"use client";
+'use client'
 
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 
-/* ------------ Types ------------- */
+type Series = {
+  id: number
+  name: string
+  slug?: string | null
+  description?: string | null
+}
+
 type Festival = {
-  id: string;
-  series_id: number;
-  label: string;
-  city: string | null;
-  start_date: string;
-  end_date: string;
-};
-
-type EventRow = {
-  id: string;
-  tournament_name?: string | null; // from events.name
-  start_date?: string | null;
-  series_id: number | null;
-  festival_id: string | null;
-};
-
-type Series = { id: number; name: string; slug?: string };
-
-/* ------------ Small utilities ------------- */
-function ymdToDate(s?: string | null): Date | null {
-  if (!s) return null;
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-function fmt(date: string) {
-  return date;
-}
-function cmpDateAsc(a: EventRow, b: EventRow) {
-  const da = ymdToDate(a.start_date)!.getTime();
-  const db = ymdToDate(b.start_date)!.getTime();
-  return da - db;
+  id: string
+  series_id: number | null
+  label: string
+  city: string | null
+  start_date: string
+  end_date: string
 }
 
-/* ------------ Label/City inference helpers ------------- */
-
-// words to remove from label candidates
-const STOPWORDS = new Set([
-  "event", "the", "no", "opener", "closer", "mini", "super",
-  "turbo", "flight", "re-entry", "bounty", "gtd", "seat", "free",
-  "added", "ante", "mystery", "pko", "pkb", "rebuy", "re", "main",
-  "dragon", "high", "roller", "plo", "card", "holdem", "nlh", "nl",
-  "day", "flight", "stack", "deepstack", "mega", "satellite", "sat",
-]);
-
-// common UK series cities (extend as needed)
-const KNOWN_CITIES = [
-  "Coventry","Manchester","Leeds","London","Sheffield","Bolton","Reading",
-  "Liverpool","Luton","Blackpool","Nottingham","Birmingham","Glasgow",
-  "Newcastle","Bristol","Edinburgh","Cardiff","Brighton"
-];
-
-// a safe trailing-separators regex (unicode aware)
-const TAIL_SEPS = /[\u2013\u2014\-:,]+$/u; // en dash, em dash, hyphen, colon, comma
-
-// strip money, numbers, parentheses, punctuation
-function normalizeName(raw?: string | null): string {
-  const s = (raw || "").toLowerCase();
-  // remove £ and money / numbers like 50,000 / 10k / 25/50 etc
-  let t = s.replace(/£?\s?\d[\d,]*(k|gtd)?/g, " ");
-  t = t.replace(/\(.*?\)/g, " "); // remove parenthetical
-  t = t.replace(/[\d/:-]/g, " "); // remaining numbers / separators
-  t = t.replace(/[^\p{L}\s'-]/gu, " "); // anything non-letter
-  // collapse spaces
-  t = t.replace(/\s+/g, " ").trim();
-
-  // drop stopwords
-  const words = t.split(" ").filter(w => w && !STOPWORDS.has(w));
-  return words.join(" ");
+type ResultRow = {
+  id: string
+  tournament_name: string | null
+  start_date: string | null
+  series_id: number | null
+  series_slug?: string | null
+  festival_id: string | null
 }
 
-function longestCommonPrefixStr(list: string[]): string {
-  if (!list.length) return "";
-  let prefix = list[0];
-  for (let i = 1; i < list.length; i++) {
-    let j = 0;
-    while (j < prefix.length && j < list[i].length && prefix[j] === list[i][j]) j++;
-    prefix = prefix.slice(0, j);
-    if (!prefix) break;
-  }
-  return prefix.trim();
+type SeriesListResp = {
+  series: Array<{ id: number; name?: string | null; slug?: string | null; description?: string | null }>
+  _error?: string
 }
+type SeriesGetResp = { ok?: boolean; series?: Series; _error?: string }
+type EventsResp = { ok?: boolean; results?: ResultRow[]; total?: number; _error?: string }
+type FestivalsResp = { ok?: boolean; festivals?: Festival[]; _error?: string }
 
-function titleCase(s: string) {
-  return s.replace(/\b\w+/g, w => w[0].toUpperCase() + w.slice(1));
-}
-
-function inferCityFromNames(names: string[]): string | null {
-  const counts = new Map<string, number>();
-  for (const n of names) {
-    const words = n.split(/[\s-]+/).map(w => w.replace(/[^A-Za-z]/g, ""));
-    for (const w of words) {
-      const cap = w[0]?.toUpperCase() + w.slice(1).toLowerCase();
-      if (KNOWN_CITIES.includes(cap)) {
-        counts.set(cap, (counts.get(cap) || 0) + 1);
-      }
-    }
-  }
-  let best: string | null = null;
-  let max = 0;
-  counts.forEach((v, k) => {
-    if (v > max) { max = v; best = k; }
-  });
-  return best;
-}
-
-function deriveLabelAndCity(seriesName: string, eventNames: string[]) {
-  const cleaned = eventNames.map(normalizeName).filter(Boolean);
-  let label = "";
-  let city: string | null = null;
-
-  if (cleaned.length) {
-    const prefix = longestCommonPrefixStr(cleaned);
-    if (prefix && prefix.split(" ").join("").length >= 3) {
-      label = titleCase(prefix).replace(TAIL_SEPS, "").trim();
-    }
-  }
-
-  // City inference
-  city = inferCityFromNames(eventNames) || null;
-
-  if (!label) {
-    label = seriesName;
-    if (city) label += ` ${city}`;
-  }
-  label = label.replace(TAIL_SEPS, "").trim();
-  return { label, city };
-}
-
-/* ------------ Cluster logic ------------- */
-type Cluster = {
-  start: string; end: string;
-  events: EventRow[];
-  label: string; city: string | null;
-};
-
-function buildClusters(
-  events: EventRow[],
-  seriesName: string,
-  dayGap: number,
-  minSize: number
-) {
-  const sorted = [...events].sort(cmpDateAsc);
-  const clusters: Cluster[] = [];
-  let cur: EventRow[] = [];
-
-  const flush = () => {
-    if (!cur.length) return;
-    const start = cur[0].start_date!;
-    const end = cur[cur.length - 1].start_date!;
-    const names = cur.map(e => e.tournament_name || "");
-    const { label, city } = deriveLabelAndCity(seriesName, names);
-    clusters.push({ start, end, events: cur, label, city });
-    cur = [];
-  };
-
-  for (let i = 0; i < sorted.length; i++) {
-    const e = sorted[i];
-    if (!e.start_date) continue;
-    if (!cur.length) { cur = [e]; continue; }
-
-    const prev = cur[cur.length - 1];
-    const d1 = ymdToDate(prev.start_date)!.getTime();
-    const d2 = ymdToDate(e.start_date)!.getTime();
-    const diff = Math.abs(d2 - d1) / (24 * 3600 * 1000);
-
-    if (diff <= dayGap) cur.push(e);
-    else { flush(); cur = [e]; }
-  }
-  flush();
-
-  const big = clusters.filter(c => c.events.length >= minSize);
-  const small = clusters.filter(c => c.events.length < minSize);
-  return { clusters, big, small };
-}
-
-/* ------------ Page ------------- */
-export default function ManageSeriesPage() {
-  const params = useParams();
-  const raw = String(params?.id || "").trim();
-
-  const [series, setSeries] = useState<Series | null>(null);
-  const [festivals, setFestivals] = useState<Festival[]>([]);
-  const [events, setEvents] = useState<EventRow[]>([]);
-  const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  // auto festival controls
-  const [gap, setGap] = useState(3);        // gap in days
-  const [minSize, setMinSize] = useState(3);
-  const [selected, setSelected] = useState<Record<number, boolean>>({});
-
-  // festival editing
-  const [editId, setEditId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<{label:string; city:string; start_date:string; end_date:string}>({
-    label: "", city: "", start_date: "", end_date: ""
-  });
-
-  const load = async () => {
-    setErr(null);
-    setOk(null);
-    setLoading(true);
-    try {
-      // resolve series
-      const sRes = await fetch("/api/admin/series/list", { cache: "no-store" });
-      const sJson = await sRes.json();
-      if (!sRes.ok) throw new Error(sJson?._error || sRes.statusText);
-      const list = (sJson.series || []) as Series[];
-      const sid = Number(raw);
-      const srs = list.find(x => x.id === sid) || null;
-      if (!srs) throw new Error("Series not found");
-      setSeries(srs);
-
-      // festivals
-      const fRes = await fetch(`/api/admin/festivals/list?series_id=${srs.id}`, { cache: "no-store" });
-      const fJson = await fRes.json();
-      if (!fRes.ok) throw new Error(fJson?._error || fRes.statusText);
-      setFestivals(fJson.festivals || []);
-
-      // events in this series
-      const evRes = await fetch(`/api/admin/series/${srs.id}/events`, { cache: "no-store" });
-      const evJson = await evRes.json();
-      if (!evRes.ok) throw new Error(evJson?._error || evRes.statusText);
-      setEvents((evJson.events || []) as EventRow[]);
-    } catch (e: any) {
-      setErr(e?.message || String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [raw]);
-
-  const seriesName = series?.name || "Series";
-  const { clusters, big } = useMemo(
-    () => buildClusters(events, seriesName, gap, minSize),
-    [events, seriesName, gap, minSize]
-  );
+/** Lightweight modal (no external libs) */
+function Modal({
+  open,
+  title,
+  onClose,
+  children,
+}: {
+  open: boolean
+  title?: string
+  onClose: () => void
+  children: React.ReactNode
+}) {
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
 
   useEffect(() => {
-    const map: Record<number, boolean> = {};
-    clusters.forEach((c, i) => { map[i] = c.events.length >= minSize; });
-    setSelected(map);
-  }, [clusters, minSize]);
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [open])
 
-  const anyAssigned = (festivals || []).length > 0;
+  if (!open) return null
 
-  async function createFestivalOne(series_id: number, c: Cluster) {
-    const res = await fetch("/api/admin/festivals/create", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        series_id,
-        label: c.label,
-        city: c.city || null,
-        start_date: c.start,
-        end_date: c.end,
-      }),
-    });
-    const j = await res.json();
-    if (!res.ok) throw new Error(j?._error || res.statusText);
-    const festId = j?.festival?.id || j?.id || j?.festival_id;
-    if (!festId) throw new Error("Festival id missing in response");
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" aria-modal="true" role="dialog">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-2xl rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <h2 className="text-lg font-semibold">{title || 'Modal'}</h2>
+          <button className="rounded-md border px-2 py-1 text-sm" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <div className="p-4">{children}</div>
+      </div>
+    </div>
+  )
+}
 
-    // auto-assign its events
-    for (const ev of c.events) {
-      const r = await fetch("/api/admin/festivals/assign-event", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          event_id: ev.id,
-          series_id,
-          festival_id: festId,
-        }),
-      });
-      const jj = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(jj?._error || r.statusText);
+export default function AdminSeriesManagePage() {
+  const params = useParams() as { id?: string }
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const seriesId = Number(params?.id ?? 0)
+
+  // data
+  const [series, setSeries] = useState<Series | null>(null)
+  const [allSeries, setAllSeries] = useState<Series[]>([])
+  const [festivals, setFestivals] = useState<Festival[]>([])
+  const [results, setResults] = useState<ResultRow[]>([])
+  const [total, setTotal] = useState(0)
+
+  // filters + pagination
+  const [q, setQ] = useState<string>(searchParams.get('q') ?? '')
+  const [onlyUnassigned, setOnlyUnassigned] = useState<boolean>((searchParams.get('unassigned') ?? '') === '1')
+  const [page, setPage] = useState<number>(Number(searchParams.get('page') || 1) || 1)
+  const [pageSize, setPageSize] = useState<number>(Number(searchParams.get('limit') || 100) || 100)
+
+  // ui state
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [ok, setOk] = useState<string | null>(null)
+
+  // selection
+  const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const selectedIds = useMemo(() => Object.entries(selected).filter(([, v]) => v).map(([id]) => id), [selected])
+
+  // Festival modal: supports both Create and Edit
+  type FestMode = 'create' | 'edit'
+  const [festModalOpen, setFestModalOpen] = useState(false)
+  const [festMode, setFestMode] = useState<FestMode>('create')
+  const [editingFestId, setEditingFestId] = useState<string | null>(null)
+  const [festForm, setFestForm] = useState<{ label: string; city: string; start_date: string; end_date: string }>({
+    label: '',
+    city: '',
+    start_date: '',
+    end_date: '',
+  })
+
+  // URL fallback for opening modal (preserve your existing ?newFest=1)
+  const showNewFestUrl = (searchParams.get('newFest') ?? '') === '1'
+  useEffect(() => {
+    if (showNewFestUrl) {
+      setFestMode('create')
+      setEditingFestId(null)
+      setFestModalOpen(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showNewFestUrl])
+
+  // focus first input
+  const firstInputRef = useRef<HTMLInputElement | null>(null)
+  useEffect(() => {
+    if (festModalOpen && firstInputRef.current) {
+      const t = setTimeout(() => firstInputRef.current?.focus(), 50)
+      return () => clearTimeout(t)
+    }
+  }, [festModalOpen])
+
+  function openCreateFestival() {
+    setFestMode('create')
+    setEditingFestId(null)
+    setFestForm({ label: '', city: '', start_date: '', end_date: '' })
+    setFestModalOpen(true)
+    const sp = new URLSearchParams(Array.from(searchParams.entries()))
+    sp.set('newFest', '1')
+    router.replace(`/admin/series/${seriesId}?${sp.toString()}`)
+  }
+
+  function openEditFestival(f: Festival) {
+    setFestMode('edit')
+    setEditingFestId(f.id)
+    setFestForm({
+      label: f.label,
+      city: f.city ?? '',
+      start_date: f.start_date ?? '',
+      end_date: f.end_date ?? '',
+    })
+    setFestModalOpen(true)
+    // optional: set a URL flag for edit if you want deep-linking;
+    // keeping it simple: no URL change for edit.
+  }
+
+  function closeFestivalModal() {
+    setFestModalOpen(false)
+    setEditingFestId(null)
+    const sp = new URLSearchParams(Array.from(searchParams.entries()))
+    sp.delete('newFest')
+    router.replace(sp.size ? `/admin/series/${seriesId}?${sp.toString()}` : `/admin/series/${seriesId}`)
+  }
+
+  // edit series
+  const [editingSeries, setEditingSeries] = useState(false)
+  const [form, setForm] = useState<{ name: string; slug: string; description: string }>({
+    name: '',
+    slug: '',
+    description: '',
+  })
+
+  // ----- loaders -----
+  async function loadSeriesDetails() {
+    if (!seriesId) return
+    setErr(null)
+    try {
+      const r = await fetch(`/api/admin/series/get?id=${seriesId}`, { cache: 'no-store' })
+      if (r.ok) {
+        const js: SeriesGetResp = await r.json()
+        if (js?.series) {
+          const s = js.series
+          setSeries(s)
+          setForm({ name: s.name || '', slug: s.slug || '', description: s.description || '' })
+          return
+        }
+      }
+      const r2 = await fetch('/api/admin/series/list', { cache: 'no-store' })
+      const js2: SeriesListResp = await r2.json()
+      if (!r2.ok) throw new Error(js2?._error || r2.statusText)
+      const list = (js2.series || []).map(s => ({
+        id: s.id,
+        name: (s.name ?? '') as string,
+        slug: s.slug ?? null,
+        description: (s.description ?? s.description ?? '') || null,
+      }))
+      const found = list.find(s => s.id === seriesId)
+      if (!found) throw new Error('Series not found')
+      setSeries(found)
+      setForm({ name: found.name || '', slug: found.slug || '', description: found.description || '' })
+    } catch (e: any) {
+      setErr(e?.message || String(e))
     }
   }
 
-  const createSelected = async () => {
-    if (!series) return;
-    setLoading(true);
-    setErr(null); setOk(null);
+  async function loadSeriesOptions() {
     try {
-      const chosen = clusters.filter((_, i) => selected[i]);
-      if (!chosen.length) throw new Error("Nothing selected.");
-      for (const c of chosen) {
-        await createFestivalOne(series.id, c);
+      const r = await fetch('/api/admin/series/list', { cache: 'no-store' })
+      const js: SeriesListResp = await r.json()
+      if (!r.ok) throw new Error(js?._error || r.statusText)
+      const list: Series[] = (js.series || []).map(s => ({
+        id: s.id,
+        name: (s.name ?? '') as string,
+        slug: s.slug ?? null,
+        description: (s.description ?? s.description ?? '') || null,
+      }))
+      setAllSeries(list.slice().sort((a, b) => a.name.localeCompare(b.name)))
+    } catch (e: any) {
+      setErr(e?.message || String(e))
+    }
+  }
+
+  async function loadFestivals() {
+    if (!seriesId) return
+    try {
+      const r = await fetch(`/api/admin/festivals/list?series_id=${seriesId}`, { cache: 'no-store' })
+      const js: FestivalsResp = await r.json()
+      if (!r.ok) throw new Error(js?._error || r.statusText)
+      setFestivals(js.festivals || [])
+    } catch (e: any) {
+      setErr(e?.message || String(e))
+    }
+  }
+
+  async function loadResults() {
+    if (!seriesId) return
+    setLoading(true)
+    setErr(null); setOk(null)
+    try {
+      const params = new URLSearchParams()
+      if (q.trim()) params.set('q', q.trim())
+      if (onlyUnassigned) params.set('unassigned_only', '1')
+      params.set('limit', String(pageSize))
+      params.set('offset', String((page - 1) * pageSize))
+
+      const r = await fetch(`/api/admin/series/${seriesId}/events?` + params.toString(), { cache: 'no-store' })
+      const js: EventsResp = await r.json()
+      if (!r.ok || js.ok === false) throw new Error(js?._error || r.statusText)
+
+      const list = js.results || []
+      setResults(list)
+      setTotal(js.total ?? list.length)
+
+      const map: Record<string, boolean> = {}
+      for (const row of list) map[row.id] = false
+      setSelected(map)
+    } catch (e: any) {
+      setErr(e?.message || String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!seriesId) return
+    ;(async () => {
+      await Promise.all([loadSeriesDetails(), loadSeriesOptions(), loadFestivals()])
+      await loadResults()
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seriesId])
+
+  useEffect(() => {
+    if (!seriesId) return
+    const sp = new URLSearchParams()
+    if (q.trim()) sp.set('q', q.trim())
+    if (onlyUnassigned) sp.set('unassigned', '1')
+    if (page !== 1) sp.set('page', String(page))
+    if (pageSize !== 100) sp.set('limit', String(pageSize))
+    const qs = sp.toString()
+    const base = `/admin/series/${seriesId}`
+    router.replace(qs ? `${base}?${qs}` : base)
+    void loadResults()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, onlyUnassigned, page, pageSize])
+
+  // ----- actions -----
+  async function saveFestival() {
+    if (!series) return
+    const payload = {
+      series_id: series.id,
+      label: festForm.label.trim(),
+      city: festForm.city.trim() || null,
+      start_date: festForm.start_date,
+      end_date: festForm.end_date,
+    }
+    if (!payload.label || !payload.start_date || !payload.end_date) {
+      setErr('Please fill label, start and end date.')
+      return
+    }
+
+    setErr(null); setOk(null)
+
+    // Branch: create vs update
+    if (festMode === 'create' || !editingFestId) {
+      const r = await fetch('/api/admin/festivals/create', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const js = await r.json()
+      if (!r.ok || js.ok === false) {
+        setErr(js?.error || r.statusText)
+        return
       }
-      setOk(`Created ${chosen.length} festival(s) and assigned ${chosen.reduce((a,c)=>a+c.events.length,0)} events.`);
-      await load();
-    } catch (e:any) {
-      setErr(e?.message || String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const assignEvent = async (event_id: string, festival_id: string | "none") => {
-    if (!series) return;
-    setErr(null); setOk(null);
-    const res = await fetch("/api/admin/festivals/assign-event", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        event_id,
-        series_id: series.id,
-        festival_id: festival_id === "none" ? null : festival_id,
-      }),
-    });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) { setErr(j?._error || res.statusText); return; }
-    setOk("Event updated.");
-    await load();
-  };
-
-  const changeSeries = async (event_id: string, series_slug: string | "none") => {
-    setErr(null); setOk(null);
-    const res = await fetch("/api/admin/series/change-series", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        event_id,
-        series_slug: series_slug === "none" ? null : series_slug,
-      }),
-    });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) { setErr(j?._error || res.statusText); return; }
-    setOk("Series changed.");
-    await load();
-  };
-
-  // --------- edit handlers ----------
-  const startEdit = (f: Festival) => {
-    setEditId(f.id);
-    setEditForm({
-      label: f.label || "",
-      city: f.city || "",
-      start_date: f.start_date,
-      end_date: f.end_date,
-    });
-  };
-  const cancelEdit = () => {
-    setEditId(null);
-    setEditForm({ label: "", city: "", start_date: "", end_date: "" });
-  };
-  const saveEdit = async () => {
-    if (!editId) return;
-    setLoading(true);
-    setErr(null); setOk(null);
-    try {
-      const res = await fetch("/api/admin/festivals/update", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
+      setOk('Festival created.')
+    } else {
+      // edit mode: PATCH via /update
+      const r = await fetch('/api/admin/festivals/update', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          id: editId,
-          label: editForm.label.trim(),
-          city: editForm.city.trim() || null,
-          start_date: editForm.start_date,
-          end_date: editForm.end_date,
+          id: editingFestId,
+          label: payload.label,
+          city: payload.city,
+          start_date: payload.start_date,
+          end_date: payload.end_date,
         }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?._error || res.statusText);
-      setOk("Festival updated.");
-      cancelEdit();
-      await load();
-    } catch (e:any) {
-      setErr(e?.message || String(e));
-    } finally {
-      setLoading(false);
+      })
+      const js = await r.json()
+      if (!r.ok || js.ok === false) {
+        setErr(js?.error || r.statusText)
+        return
+      }
+      setOk('Festival updated.')
     }
-  };
 
-  const deleteFestival = async (id: string) => {
-    if (!confirm("Delete this festival? Events will keep their series but lose the festival assignment.")) return;
-    setLoading(true);
-    setErr(null); setOk(null);
+    setFestForm({ label: '', city: '', start_date: '', end_date: '' })
+    setEditingFestId(null)
+    setFestModalOpen(false)
+    const sp = new URLSearchParams(Array.from(searchParams.entries()))
+    sp.delete('newFest')
+    router.replace(sp.size ? `/admin/series/${seriesId}?${sp.toString()}` : `/admin/series/${seriesId}`)
+    await loadFestivals()
+  }
+
+  async function assignFestivalTo(ids: string[], festival_id: string | null) {
+    if (!ids.length) return
+    setErr(null); setOk(null); setLoading(true)
     try {
-      const res = await fetch("/api/admin/festivals/delete", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?._error || res.statusText);
-      setOk("Festival deleted.");
-      await load();
-    } catch (e:any) {
-      setErr(e?.message || String(e));
+      const r = await fetch('/api/admin/festivals/assign-event', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ event_ids: ids, festival_id }),
+      })
+      const js = await r.json()
+      if (!r.ok || js.ok === false) throw new Error(js?.error || r.statusText)
+      setOk(`Updated ${js.count || ids.length} event(s).`)
+      await loadResults()
+      await loadFestivals()
+    } catch (e: any) {
+      setErr(e?.message || String(e))
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
+
+  async function setSeriesFor(ids: string[], op: 'assign' | 'clear') {
+    if (!seriesId || !ids.length) return
+    setErr(null); setOk(null); setLoading(true)
+    try {
+      const r = await fetch(`/api/admin/series/${seriesId}/events`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ event_ids: ids, op }),
+      })
+      const js = await r.json()
+      if (!r.ok || js.ok === false) throw new Error(js?._error || r.statusText)
+      const label = op === 'assign' ? 'assigned to this series' : 'cleared from series'
+      setOk(`Successfully ${label} (${js.updated_count ?? ids.length}).`)
+      await loadResults()
+    } catch (e: any) {
+      setErr(e?.message || String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function reassignSeriesFor(ids: string[], targetSeriesId: number) {
+    if (!ids.length || !targetSeriesId) return
+    setErr(null); setOk(null); setLoading(true)
+    try {
+      const r = await fetch('/api/admin/events/assign-series', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ event_ids: ids, series_id: targetSeriesId }),
+      })
+      const js = await r.json()
+      if (!r.ok || js.ok === false) throw new Error(js?._error || r.statusText)
+      setOk(`Moved ${js.updated_count ?? ids.length} event(s) to series #${targetSeriesId}.`)
+      await loadResults()
+    } catch (e: any) {
+      setErr(e?.message || String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const toggleAll = (checked: boolean) => {
+    const next: Record<string, boolean> = {}
+    results.forEach(r => { next[r.id] = checked })
+    setSelected(next)
+  }
+
+  const renderSeriesOptions = () => {
+    const items = allSeries.slice().sort((a, b) => a.name.localeCompare(b.name))
+    return items.map(s => (
+      <option key={s.id} value={s.id} title={s.slug ? s.slug : undefined}>
+        {s.name}
+      </option>
+    ))
+  }
+
+  async function saveSeries() {
+    if (!seriesId) return
+    setErr(null); setOk(null); setLoading(true)
+    try {
+      const res = await fetch('/api/admin/series/update', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          id: seriesId,
+          name: form.name.trim(),
+          slug: form.slug.trim() || null,
+          description: form.description ?? '',
+        }),
+      })
+      const js = await res.json()
+      if (!res.ok) throw new Error(js?._error || res.statusText)
+      setOk('Series saved.')
+      setEditingSeries(false)
+      await loadSeriesDetails()
+      await loadSeriesOptions()
+    } catch (e: any) {
+      setErr(e?.message || String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ----- ui -----
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const canPrev = page > 1
+  const canNext = page < pageCount
 
   return (
-    <div className="p-4 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold">Admin — Manage Series {series?.name ?? `#${raw}`}</h1>
-          <div className="text-xs text-gray-600">
-            {festivals.length} festivals · {events.length} events
+    <div className="space-y-6">
+      {/* Top admin card */}
+      <section className="card">
+        <div className="card-header flex items-center justify-between">
+          <h1 className="text-2xl font-semibold">Admin — Series</h1>
+          <div className="flex items-center gap-2">
+            <a className="rounded-md border px-3 py-1.5 text-sm" href="/admin">Dashboard</a>
+            <a className="rounded-md border px-3 py-1.5 text-sm" href="/admin/series">All Series</a>
           </div>
         </div>
-        <div className="flex gap-2">
-          <a className="text-sm underline" href="/admin/series">Back to Series</a>
-          <button className="border rounded px-3 py-1" onClick={load} disabled={loading}>Refresh</button>
+        <div className="card-body">
+          <div className="text-sm text-neutral-600">
+            Managing series: <b>{series?.name ?? `#${seriesId}`}</b>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {err && <div className="p-2 bg-red-100 text-red-700 text-sm rounded">{err}</div>}
-      {ok && <div className="p-2 bg-green-100 text-green-700 text-sm rounded">{ok}</div>}
+      {/* Series details / editor */}
+      <section className="card">
+        <div className="card-header flex items-center justify-between">
+          <span>Series details</span>
+          {!editingSeries && (
+            <button className="rounded-md border px-3 py-1.5 text-sm" onClick={() => setEditingSeries(true)}>
+              Edit
+            </button>
+          )}
+        </div>
+        <div className="card-body space-y-3">
+          {!editingSeries ? (
+            <div className="grid gap-3 md:grid-cols-3 text-sm">
+              <div>
+                <div className="text-neutral-500">Name</div>
+                <div className="font-medium">{series?.name || '—'}</div>
+              </div>
+              <div>
+                <div className="text-neutral-500">Slug</div>
+                <div className="font-mono">{series?.slug || '—'}</div>
+              </div>
+              <div className="md:col-span-3">
+                <div className="text-neutral-500">Description</div>
+                <div className="whitespace-pre-wrap">{series?.description || '—'}</div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div>
+                  <label className="block text-sm text-neutral-600">Name</label>
+                  <input
+                    className="w-full border rounded px-2 py-1"
+                    value={form.name}
+                    onChange={(e) => setForm(s => ({ ...s, name: e.target.value }))}
+                    placeholder="e.g., GUKPT"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-neutral-600">Slug</label>
+                  <input
+                    className="w-full border rounded px-2 py-1"
+                    value={form.slug}
+                    onChange={(e) => setForm(s => ({ ...s, slug: e.target.value }))}
+                    placeholder="gukpt"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-neutral-600">Description</label>
+                <textarea
+                  className="w-full border rounded px-2 py-1"
+                  rows={4}
+                  value={form.description}
+                  onChange={(e) => setForm(s => ({ ...s, description: e.target.value }))}
+                  placeholder="Shown on the public series page."
+                />
+              </div>
+              <div className="flex gap-2">
+                <button className="rounded-md border px-3 py-1.5 text-sm" onClick={() => void saveSeries()} disabled={loading}>
+                  Save
+                </button>
+                <button
+                  className="rounded-md border px-3 py-1.5 text-sm"
+                  onClick={() => {
+                    setEditingSeries(false)
+                    if (series) {
+                      setForm({
+                        name: series.name || '',
+                        slug: series.slug || '',
+                        description: series.description || '',
+                      })
+                    }
+                  }}
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
 
-      {/* Auto-create block */}
-      <div className="border rounded bg-white overflow-hidden">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <b>Auto-create Festivals (preview → create + auto-assign)</b>
-          <div className="flex items-center gap-4 text-sm">
-            <label className="flex items-center gap-2">
-              Gap:
-              <select className="border rounded px-2 py-1"
-                value={gap}
-                onChange={e => setGap(Number(e.target.value))}
+      {/* Filters / actions */}
+      <section className="card">
+        <div className="card-header flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="font-semibold">Results for “{series?.name ?? `#${seriesId}` }”</span>
+            <span className="badge">{total} results</span>
+            {loading && <span className="text-xs text-neutral-500">Loading…</span>}
+          </div>
+        </div>
+
+        <div className="card-body space-y-3">
+          {err && <div className="p-2 rounded bg-red-100 text-red-700 text-sm">{err}</div>}
+          {ok && <div className="p-2 rounded bg-green-100 text-green-700 text-sm">{ok}</div>}
+
+          <div className="grid md:grid-cols-3 gap-3">
+            <div className="md:col-span-2">
+              <label className="block text-sm text-neutral-600">Search tournament name</label>
+              <input
+                className="w-full border rounded px-2 py-1"
+                placeholder="e.g. Goliath, UKPL, Main, Bounty…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && loadResults()}
+              />
+              <p className="text-xs text-neutral-500 mt-1">
+                Served by <code>/api/admin/series/{seriesId}/events</code>.
+              </p>
+            </div>
+            <div className="flex items-end gap-3">
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={onlyUnassigned} onChange={(e) => setOnlyUnassigned(e.target.checked)} />
+                Only results without a festival
+              </label>
+              <label className="text-sm inline-flex items-center gap-2">
+                Page size:
+                <select
+                  className="border rounded px-2 py-1 text-sm"
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
+                >
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={200}>200</option>
+                </select>
+              </label>
+              <button className="rounded-md border px-3 py-1.5 text-sm" onClick={() => void loadResults()} disabled={loading}>
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Bulk actions row */}
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <span className="text-sm text-neutral-600">
+              Selected: <b>{selectedIds.length}</b>
+            </span>
+
+            {/* Assign/clear to THIS series */}
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border px-3 py-1.5 text-sm"
+                disabled={!selectedIds.length || loading}
+                onClick={() => void setSeriesFor(selectedIds, 'assign')}
+                title="Set series_id on selected events to this series"
               >
-                <option value={3}>3 days</option>
-                <option value={5}>5 days</option>
-                <option value={7}>7 days</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-2">
-              Min size:
-              <select className="border rounded px-2 py-1"
-                value={minSize}
-                onChange={e => setMinSize(Number(e.target.value))}
+                Assign to this series
+              </button>
+              <button
+                className="rounded-md border px-3 py-1.5 text-sm"
+                disabled={!selectedIds.length || loading}
+                onClick={() => void setSeriesFor(selectedIds, 'clear')}
+                title="Clear series_id on selected events"
               >
-                <option value={2}>2</option>
-                <option value={3}>3</option>
-                <option value={4}>4</option>
+                Clear series
+              </button>
+            </div>
+
+            {/* Reassign to ANOTHER series */}
+            <div className="flex items-center gap-1">
+              <label className="text-sm text-neutral-600">Move to series:</label>
+              <select
+                className="border rounded px-2 py-1 text-sm"
+                onChange={(e) => {
+                  const target = Number(e.target.value || 0)
+                  if (!target) return
+                  void reassignSeriesFor(selectedIds, target)
+                  e.currentTarget.selectedIndex = 0
+                }}
+              >
+                <option value="">— choose —</option>
+                {renderSeriesOptions()}
               </select>
-            </label>
-            <button
-              className="border rounded px-3 py-1"
-              onClick={createSelected}
-              disabled={loading || !Object.values(selected).some(Boolean)}
-            >
-              Create selected
+            </div>
+
+            {/* Existing festival bulk selector */}
+            <div className="flex items-center gap-1">
+              <label className="text-sm text-neutral-600">Assign festival:</label>
+              <select
+                className="border rounded px-2 py-1 text-sm"
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (!v) return
+                  if (v === '__new__') {
+                    openCreateFestival()
+                  } else if (v === '__clear__') {
+                    void assignFestivalTo(selectedIds, null)
+                  } else {
+                    void assignFestivalTo(selectedIds, v)
+                  }
+                  e.currentTarget.selectedIndex = 0
+                }}
+              >
+                <option value="">— choose —</option>
+                <option value="__clear__">␡ Clear festival</option>
+                <option value="__new__">+ New festival…</option>
+                {festivals.map(f => (
+                  <option key={f.id} value={f.id}>
+                    {f.label} ({f.start_date} → {f.end_date})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Festivals list */}
+      <section className="card">
+        <div className="card-header flex items-center justify-between">
+          <b>Festivals in “{series?.name ?? ''}”</b>
+          <div className="flex gap-2">
+            <button className="rounded-md border px-3 py-1.5 text-sm" onClick={() => void loadFestivals()} disabled={loading}>
+              Refresh
+            </button>
+            <button className="rounded-md border px-3 py-1.5 text-sm" onClick={openCreateFestival}>
+              + New festival
             </button>
           </div>
         </div>
-
-        <div className="p-4 overflow-x-auto text-sm">
-          {!clusters.length ? (
-            <p className="text-gray-600">No events available for clustering.</p>
+        <div className="card-body overflow-x-auto">
+          {!festivals.length ? (
+            <div className="text-sm text-neutral-600">No festivals yet.</div>
           ) : (
-            <table className="min-w-full">
+            <table className="tbl">
               <thead>
                 <tr>
-                  <th className="text-left">Use</th>
                   <th className="text-left">Label</th>
                   <th className="text-left">City</th>
                   <th className="text-left">Dates</th>
-                  <th className="text-left">Events</th>
-                  <th className="text-left">Examples</th>
+                  <th className="text-left">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {clusters.map((c, i) => {
-                  const examples = c.events.slice(0, 3).map(e => e.tournament_name || "").join(" · ");
-                  const isSmall = c.events.length < minSize;
-                  return (
-                    <tr key={i} className={isSmall ? "opacity-70" : ""}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={!!selected[i]}
-                          onChange={(e) => setSelected(s => ({ ...s, [i]: e.target.checked }))}
-                        />
-                      </td>
-                      <td>{c.label}</td>
-                      <td>{c.city || "—"}</td>
-                      <td>{fmt(c.start)} → {fmt(c.end)}</td>
-                      <td>{c.events.length}</td>
-                      <td className="max-w-[520px] truncate" title={examples}>{examples}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-          <div className="text-xs text-gray-600 mt-2">
-            Preview: {clusters.length} cluster(s) found. <b>{big.length}</b> meet the minimum size ({minSize}+).
-          </div>
-        </div>
-      </div>
-
-      {/* Existing festivals list — with inline edit */}
-      <div className="border rounded bg-white overflow-hidden">
-        <div className="px-4 py-3 border-b">
-          <b>Festivals</b>
-        </div>
-        <div className="p-4 overflow-x-auto">
-          {!festivals.length ? (
-            <p className="text-sm text-gray-600">No festivals for this series yet.</p>
-          ) : (
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr>
-                  <th className="text-left">Label</th>
-                  <th className="text-left">City</th>
-                  <th className="text-left">Start</th>
-                  <th className="text-left">End</th>
-                  <th className="text-left w-48">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {festivals.map(f => {
-                  const isEditing = editId === f.id;
-                  return (
-                    <tr key={f.id}>
-                      <td>
-                        {isEditing ? (
-                          <input
-                            className="border rounded px-2 py-1 w-full"
-                            value={editForm.label}
-                            onChange={(e) => setEditForm(s => ({ ...s, label: e.target.value }))}
-                          />
-                        ) : f.label}
-                      </td>
-                      <td>
-                        {isEditing ? (
-                          <input
-                            className="border rounded px-2 py-1 w-full"
-                            value={editForm.city}
-                            onChange={(e) => setEditForm(s => ({ ...s, city: e.target.value }))}
-                            placeholder="optional"
-                          />
-                        ) : (f.city || "—")}
-                      </td>
-                      <td>
-                        {isEditing ? (
-                          <input
-                            type="date"
-                            className="border rounded px-2 py-1"
-                            value={editForm.start_date}
-                            onChange={(e) => setEditForm(s => ({ ...s, start_date: e.target.value }))}
-                          />
-                        ) : f.start_date}
-                      </td>
-                      <td>
-                        {isEditing ? (
-                          <input
-                            type="date"
-                            className="border rounded px-2 py-1"
-                            value={editForm.end_date}
-                            onChange={(e) => setEditForm(s => ({ ...s, end_date: e.target.value }))}
-                          />
-                        ) : f.end_date}
-                      </td>
-                      <td>
-                        {isEditing ? (
-                          <div className="flex gap-2">
-                            <button className="border rounded px-2 py-1" onClick={saveEdit} disabled={loading}>Save</button>
-                            <button className="border rounded px-2 py-1" onClick={cancelEdit} disabled={loading}>Cancel</button>
-                          </div>
-                        ) : (
-                          <div className="flex gap-2">
-                            <button className="border rounded px-2 py-1" onClick={() => startEdit(f)} disabled={loading}>Edit</button>
-                            <button className="border rounded px-2 py-1" onClick={() => deleteFestival(f.id)} disabled={loading}>Delete</button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-      {/* Events table with manual assignment controls */}
-      <div className="border rounded bg-white overflow-hidden">
-        <div className="px-4 py-3 border-b">
-          <b>Assigned Events</b>
-        </div>
-        <div className="p-4 overflow-x-auto">
-          {!events.length ? (
-            <p className="text-sm text-gray-600">No events yet.</p>
-          ) : (
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr>
-                  <th className="text-left">Start</th>
-                  <th className="text-left">Tournament</th>
-                  <th className="text-left">Festival</th>
-                  <th className="text-left">Series</th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.sort(cmpDateAsc).map(ev => (
-                  <tr key={ev.id}>
-                    <td>{ev.start_date || "—"}</td>
-                    <td>{ev.tournament_name || "—"}</td>
-                    <td>
-                      <select
-                        className="border rounded px-2 py-1"
-                        value={ev.festival_id || "none"}
-                        onChange={(e) => assignEvent(ev.id, e.target.value as any)}
+                {festivals.map(f => (
+                  <tr key={f.id}>
+                    <td>{f.label}</td>
+                    <td>{f.city || '—'}</td>
+                    <td>{f.start_date} → {f.end_date}</td>
+                    <td className="space-x-2">
+                      <a
+                        className="rounded-md border px-2 py-1 text-sm"
+                        href="#"
+                        onClick={(e) => { e.preventDefault(); openEditFestival(f) }}
                       >
-                        <option value="none">— none —</option>
-                        {festivals.map(f => (
-                          <option key={f.id} value={f.id}>
-                            {f.label} ({f.start_date} → {f.end_date})
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <select
-                        className="border rounded px-2 py-1"
-                        onChange={(e) => changeSeries(ev.id, e.target.value as any)}
+                        Edit
+                      </a>
+                      <a
+                        className="rounded-md border px-2 py-1 text-sm"
+                        href="#"
+                        onClick={async (e) => {
+                          e.preventDefault()
+                          if (!confirm('Delete this festival? All linked events will be unassigned.')) return
+                          setErr(null); setOk(null)
+                          const r = await fetch('/api/admin/festivals/delete', {
+                            method: 'POST',
+                            headers: { 'content-type': 'application/json' },
+                            body: JSON.stringify({ id: f.id }),
+                          })
+                          const js = await r.json()
+                          if (!r.ok || js.ok === false) { setErr(js?.error || r.statusText); return }
+                          setOk(js.message || 'Deleted.')
+                          await loadFestivals()
+                          await loadResults()
+                        }}
                       >
-                        <option value="none">— keep —</option>
-                        <option value="gukpt">GUKPT</option>
-                        <option value="minifest">Mini Fest</option>
-                        <option value="888live">888Live</option>
-                        <option value="ukpl">UKPL</option>
-                        <option value="online">Online</option>
-                        <option value="2550">25/50</option>
-                        <option value="goliath">Goliath</option>
-                        <option value="other">Other</option>
-                      </select>
+                        Delete
+                      </a>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
-          {!anyAssigned && (
-            <p className="text-xs text-gray-500 mt-2">
-              Tip: Use the Auto-create block above to create festivals, then assign here (or let the button auto-assign).
-            </p>
+        </div>
+      </section>
+
+      {/* Results table + pagination */}
+      <section className="card">
+        <div className="card-header flex items-center justify-between">
+          <b>Results</b>
+          <div className="flex items-center gap-2 text-sm">
+            <button className="rounded-md border px-2 py-1" disabled={!canPrev} onClick={() => canPrev && setPage(p => p - 1)}>
+              ← Prev
+            </button>
+            <span>Page {page} / {pageCount}</span>
+            <button className="rounded-md border px-2 py-1" disabled={!canNext} onClick={() => canNext && setPage(p => p + 1)}>
+              Next →
+            </button>
+          </div>
+        </div>
+        <div className="card-body overflow-x-auto">
+          {!results.length ? (
+            <div className="text-sm text-neutral-600">{loading ? 'Loading…' : 'No results.'}</div>
+          ) : (
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={results.length > 0 && Object.values(selected).every(Boolean)}
+                      onChange={(e) => toggleAll(e.target.checked)}
+                    />
+                  </th>
+                  <th className="text-left">Start</th>
+                  <th className="text-left">Tournament</th>
+                  <th className="text-left">Festival</th>
+                  <th className="text-left">Series</th>
+                  <th className="text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.map(r => {
+                  const isChecked = !!selected[r.id]
+                  const currentSeriesId = r.series_id ?? 0
+                  return (
+                    <tr key={r.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => setSelected(s => ({ ...s, [r.id]: e.target.checked }))}
+                        />
+                      </td>
+                      <td>{r.start_date || '—'}</td>
+                      <td title={r.tournament_name || ''}>{r.tournament_name || '—'}</td>
+                      <td>
+                        <select
+                          className="border rounded px-2 py-1 text-sm"
+                          value={r.festival_id || 'none'}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            if (v === 'none') {
+                              void assignFestivalTo([r.id], null)
+                            } else if (v === '__new__') {
+                              openCreateFestival()
+                            } else {
+                              void assignFestivalTo([r.id], v)
+                            }
+                          }}
+                        >
+                          <option value="none">— none —</option>
+                          {festivals.map(f => (
+                            <option key={f.id} value={f.id}>
+                              {f.label} ({f.start_date} → {f.end_date})
+                            </option>
+                          ))}
+                          <option value="__new__">+ New…</option>
+                        </select>
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          {currentSeriesId === seriesId ? (
+                            <>
+                              <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">In this series</span>
+                              <button
+                                className="rounded-md border px-2 py-1 text-sm"
+                                onClick={() => void setSeriesFor([r.id], 'clear')}
+                                disabled={loading}
+                              >
+                                Remove
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                className="rounded-md border px-2 py-1 text-sm"
+                                onClick={() => void setSeriesFor([r.id], 'assign')}
+                                disabled={loading}
+                                title="Assign to this series"
+                              >
+                                Add here
+                              </button>
+                              <select
+                                className="border rounded px-2 py-1 text-sm"
+                                value=""
+                                onChange={(e) => {
+                                  const target = Number(e.target.value || 0)
+                                  if (!target) return
+                                  void reassignSeriesFor([r.id], target)
+                                  e.currentTarget.selectedIndex = 0
+                                }}
+                                title="Move to a different series"
+                              >
+                                <option value="">Move to…</option>
+                                {renderSeriesOptions()}
+                              </select>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                      <td className="space-x-2">
+                        <a
+                          className="rounded-md border px-2 py-1 text-sm"
+                          href={`/#/result/${r.id}`}
+                          onClick={(e) => { e.preventDefault(); alert(`Event ${r.id}\n${r.tournament_name || ''}`) }}
+                        >
+                          View
+                        </a>
+                        {r.festival_id && (
+                          <button
+                            className="rounded-md border px-2 py-1 text-sm"
+                            onClick={() => void assignFestivalTo([r.id], null)}
+                          >
+                            Clear festival
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           )}
         </div>
-      </div>
+      </section>
+
+      {/* Create/Edit Festival — Modal */}
+      <Modal
+        open={festModalOpen}
+        onClose={closeFestivalModal}
+        title={`${festMode === 'edit' ? 'Edit' : 'Create'} festival${series?.name ? ` in “${series.name}”` : ''}`}
+      >
+        <div className="space-y-4">
+          <div className="grid md:grid-cols-4 gap-3">
+            <div className="md:col-span-2">
+              <label className="block text-sm text-neutral-600">Label</label>
+              <input
+                ref={firstInputRef}
+                className="w-full border rounded px-2 py-1"
+                value={festForm.label}
+                onChange={(e) => setFestForm({ ...festForm, label: e.target.value })}
+                placeholder="e.g. UKPL Liverpool"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-neutral-600">City (optional)</label>
+              <input
+                className="w-full border rounded px-2 py-1"
+                value={festForm.city}
+                onChange={(e) => setFestForm({ ...festForm, city: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-sm text-neutral-600">Start</label>
+                <input
+                  type="date"
+                  className="w-full border rounded px-2 py-1"
+                  value={festForm.start_date}
+                  onChange={(e) => setFestForm({ ...festForm, start_date: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-neutral-600">End</label>
+                <input
+                  type="date"
+                  className="w-full border rounded px-2 py-1"
+                  value={festForm.end_date}
+                  onChange={(e) => setFestForm({ ...festForm, end_date: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button className="rounded-md border px-3 py-1.5 text-sm" onClick={() => void saveFestival()} disabled={loading}>
+              {festMode === 'edit' ? 'Save changes' : 'Create'}
+            </button>
+            <button className="rounded-md border px-3 py-1.5 text-sm" onClick={closeFestivalModal}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
-  );
+  )
 }

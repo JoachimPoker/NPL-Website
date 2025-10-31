@@ -1,169 +1,161 @@
+// src/app/api/leaderboards/season/route.ts
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { createSupabaseRouteClient } from "@/lib/supabaseServer";
 
 export const runtime = "nodejs";
 export const revalidate = 0;
 
-type Row = {
-  player_id: string;
-  points: number;
-  gdpr_flag: boolean;
-  players: { forename: string | null; surname: string | null } | null;
-  events: { is_high_roller: boolean | null; start_date: string } | null;
-};
-
-type Season = {
+type SeasonRow = {
   id: number;
   label: string;
-  start_date: string;
-  end_date: string;
-  method: "ALL" | "BEST_X";
-  cap_x: number | null;
-  is_active: boolean;
+  start_date: string; // ISO date
+  end_date: string;   // ISO date
+  method?: "ALL" | "BEST_X" | null;
+  cap_x?: number | null;
+  is_active?: boolean | null;
 };
 
-function nameFromGdpr(f: string | null, s: string | null, anyYes: boolean) {
-  const fn = (f || "").trim();
-  const sn = (s || "").trim();
-  if (anyYes) return [fn, sn].filter(Boolean).join(" ").trim() || "Unknown";
-  if (fn && sn) return `${fn[0].toUpperCase()}.${sn[0].toUpperCase()}.`;
-  return (fn || sn || "Unknown").trim();
+function bad(code: number, msg: string, extra?: any) {
+  // Surface the error text to the client (helps you debug)
+  return NextResponse.json({ ok: false, error: msg, extra }, { status: code });
 }
 
-function aggregate(rows: Row[], method: "ALL" | "BEST_X", capX?: number, advanced?: boolean) {
-  const byPlayer = new Map<string, { pts: number[]; f: string | null; s: string | null; any: boolean }>();
-  for (const r of rows) {
-    const p = byPlayer.get(r.player_id);
-    const v = Number(r.points || 0);
-    if (p) {
-      p.pts.push(v);
-      if (r.gdpr_flag) p.any = true;
-    } else {
-      byPlayer.set(r.player_id, { pts: [v], f: r.players?.forename ?? null, s: r.players?.surname ?? null, any: !!r.gdpr_flag });
-    }
-  }
-
-  const out: any[] = [];
-  for (const [pid, v] of byPlayer.entries()) {
-    const pts = v.pts.slice().sort((a, b) => b - a);
-    const totalAll = pts.reduce((a, b) => a + b, 0);
-    const countAll = pts.length;
-    const avgAll = countAll ? totalAll / countAll : 0;
-    const lowestAll = countAll ? pts[pts.length - 1] : 0;
-
-    let used = pts, countCap = countAll, totalUsed = totalAll, avgCap = avgAll, lowCap = lowestAll;
-    if (method === "BEST_X" && capX && capX > 0) {
-      used = pts.slice(0, capX);
-      countCap = Math.min(capX, pts.length);
-      totalUsed = used.reduce((a, b) => a + b, 0);
-      avgCap = countCap ? totalUsed / countCap : 0;
-      lowCap = countCap ? used[used.length - 1] : 0;
-    }
-
-    out.push({
-      player_id: pid,
-      name: nameFromGdpr(v.f, v.s, v.any),
-      total_points: Number(totalUsed.toFixed(2)),
-      results_display: method === "BEST_X" && capX ? `${countCap} (${countAll})` : `${countAll}`,
-      average_display: method === "BEST_X" && capX ? `${avgCap.toFixed(2)} (${avgAll.toFixed(2)})` : `${avgAll.toFixed(2)}`,
-      lowest_points: Number((method === "BEST_X" && capX ? lowCap : lowestAll).toFixed(2)),
-      top_results: advanced && method === "BEST_X" && capX ? used.map(n => Number(n.toFixed(2))) : [],
-    });
-  }
-
-  out.sort((a, b) => b.total_points - a.total_points);
-  out.forEach((r, i) => (r.position = i + 1));
-  return out;
+function parseLeague(v: string | null): "npl" | "hrl" {
+  const s = (v || "").toLowerCase();
+  return s === "hrl" ? "hrl" : "npl";
 }
 
-// Correct paging: Supabase caps range to 1000 rows per request
-async function fetchAllSeasonRows(opts: {
-  kind: "npl" | "hrl";
-  start: string;
-  end: string;
-  player?: string | null;
-}) {
-  const s = supabaseAdmin();
-  const PAGE = 1000; // <-- important
-  const rows: Row[] = [];
-  let from = 0;
-
-  const selectBase =
-    "player_id, points, gdpr_flag, players!inner(forename,surname), events!inner(is_high_roller,start_date)";
-
-  while (true) {
-    let q = s
-      .from("results")
-      .select(selectBase)
-      .eq("is_deleted", false)
-      .gte("events.start_date", opts.start)
-      .lte("events.start_date", opts.end)
-      .order("player_id", { ascending: true })
-      .range(from, from + PAGE - 1);
-
-    if (opts.kind === "hrl") q = q.eq("events.is_high_roller", true);
-    if (opts.player) q = q.eq("player_id", opts.player);
-
-    const { data, error } = await q;
-    if (error) throw error;
-
-    const batch = (data as any[]).map((r) => ({
-      player_id: r.player_id as string,
-      points: Number(r.points ?? 0),
-      gdpr_flag: !!r.gdpr_flag,
-      players: (r.players ?? null) as Row["players"],
-      events: (r.events ?? null) as Row["events"],
-    }));
-
-    rows.push(...batch);
-    from += PAGE;
-    if (batch.length < PAGE) break; // stop when last page smaller than PAGE
-  }
-
-  return rows;
+function isISODate(s: string | null | undefined) {
+  return !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
 export async function GET(req: Request) {
   try {
+    const supabase = await createSupabaseRouteClient();
     const url = new URL(req.url);
-    const s = supabaseAdmin();
 
-    const kind = (url.searchParams.get("type") || "npl").toLowerCase() as "npl" | "hrl";
-    const mode = (url.searchParams.get("mode") || "simple").toLowerCase();
-    const seasonParam = url.searchParams.get("seasonId") || "current";
-    const limit = Math.max(1, Math.min(10000, Number(url.searchParams.get("limit") || "1000")));
-    const player = url.searchParams.get("player");
-    const debug = url.searchParams.get("debug") === "1";
+    const seasonIdParam = (url.searchParams.get("seasonId") || "current").trim();
+    const league = parseLeague(url.searchParams.get("league") || url.searchParams.get("type"));
+    const limit = Math.max(1, Math.min(500, Number(url.searchParams.get("limit") || 100)));
+    const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
+    const search = (url.searchParams.get("search") || url.searchParams.get("q") || "").trim() || null;
 
-    let season: Season | null = null;
-    if (seasonParam === "current") {
-      const { data } = await s.from("seasons").select("*").eq("is_active", true).maybeSingle();
-      season = (data as Season) || null;
-    } else {
-      const id = Number(seasonParam);
-      if (Number.isFinite(id)) {
-        const { data } = await s.from("seasons").select("*").eq("id", id).maybeSingle();
-        season = (data as Season) || null;
+    // allow previewing an alternate method/cap via query (overrides season)
+    const methodOverride = (url.searchParams.get("method") || "").toUpperCase() as "" | "ALL" | "BEST_X";
+    const capOverride = url.searchParams.has("cap")
+      ? Number(url.searchParams.get("cap"))
+      : null;
+
+    // Optional direct date range fallback (works if seasons table is locked down or missing)
+    const fromParam = url.searchParams.get("from");
+    const toParam = url.searchParams.get("to");
+
+    // ---- load season (by id/current) OR use from/to fallback
+    let season: SeasonRow | null = null;
+    let p_from: string;
+    let p_to: string;
+    let baseMethod: "ALL" | "BEST_X" = "ALL";
+    let baseCap = 0;
+
+    const trySeasonLookup = async () => {
+      if (seasonIdParam === "current") {
+        const { data, error } = await supabase
+          .from("seasons")
+          .select("id,label,start_date,end_date,method,cap_x,is_active")
+          .eq("is_active", true)
+          .maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error("Active season not found");
+        return data as SeasonRow;
+      } else {
+        const sid = Number(seasonIdParam);
+        if (!Number.isFinite(sid)) throw new Error("Invalid seasonId");
+        const { data, error } = await supabase
+          .from("seasons")
+          .select("id,label,start_date,end_date,method,cap_x,is_active")
+          .eq("id", sid)
+          .maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error("Season not found");
+        return data as SeasonRow;
+      }
+    };
+
+    try {
+      season = await trySeasonLookup();
+      p_from = season.start_date.slice(0, 10);
+      p_to = season.end_date.slice(0, 10);
+      baseMethod = (season.method ?? "ALL") as "ALL" | "BEST_X";
+      baseCap = season.cap_x ?? 0;
+    } catch (seasonErr: any) {
+      // Fallback to ?from=?to= if provided
+      if (isISODate(fromParam) && isISODate(toParam)) {
+        season = {
+          id: 0,
+          label: `Custom ${fromParam} → ${toParam}`,
+          start_date: fromParam!,
+          end_date: toParam!,
+          method: "ALL",
+          cap_x: 0,
+          is_active: false,
+        };
+        p_from = fromParam!;
+        p_to = toParam!;
+      } else {
+        // Return clear message so you know what failed
+        return bad(500, "Season lookup failed and no ?from=YYYY-MM-DD&to=YYYY-MM-DD provided.", {
+          reason: seasonErr?.message || String(seasonErr),
+          hint: "Either fix seasons table/RLS or call with explicit ?from & ?to.",
+        });
       }
     }
-    if (!season) return NextResponse.json({ leaderboard: [], _error: "No season found" });
 
-    const advanced = mode === "advanced";
-    const rows = await fetchAllSeasonRows({ kind, start: season.start_date, end: season.end_date, player: player || null });
+    // Final method + cap after possible overrides
+    const method = (methodOverride || baseMethod) as "ALL" | "BEST_X";
+    const cap = method === "BEST_X" ? (capOverride ?? baseCap ?? 0) : 0;
 
-    const cap = season.method === "BEST_X" ? season.cap_x ?? 0 : 0;
-    if (advanced && season.method !== "BEST_X") {
-      return NextResponse.json({ season, leaderboard: [], _error: "Advanced view requires a capped season (BEST_X)" });
+    // Validate range
+    if (new Date(p_from) > new Date(p_to)) {
+      return bad(400, "from cannot be after to");
     }
 
-    const leaderboard = aggregate(rows, season.method, cap || undefined, advanced).slice(0, limit);
+    // ---- Call the SQL function
+    const { data: rows, error: rpcErr } = await supabase.rpc("leaderboard_season", {
+      p_from,
+      p_to,
+      p_league: league,
+      p_method: method,
+      p_cap: cap,
+      p_search: search,
+      p_limit: limit,
+      p_offset: offset,
+    });
+
+    if (rpcErr) {
+      // Surface SQL error so you can fix quickly
+      return bad(500, "leaderboard_season RPC failed", { rpc: rpcErr.message });
+    }
 
     return NextResponse.json({
-      season,
-      leaderboard,
-      ...(debug ? { _debug: { filtered_by: "events.start_date", total_rows_scanned: rows.length, player_filter: player || null } } : {}),
+      ok: true,
+      meta: {
+        league,
+        season: {
+          id: season.id,
+          label: season.label,
+          start_date: p_from,
+          end_date: p_to,
+          method,
+          cap_x: cap,
+          is_active: !!season.is_active,
+        },
+        limit,
+        offset,
+        total_hint: offset + (rows?.length || 0),
+      },
+      rows: rows ?? [],
     });
   } catch (e: any) {
-    return NextResponse.json({ leaderboard: [], _error: String(e?.message || e) });
+    return bad(500, e?.message || "Unexpected error");
   }
 }

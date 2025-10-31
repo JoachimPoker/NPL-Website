@@ -1,243 +1,80 @@
-// src/app/players/[id]/page.tsx
 import Link from "next/link";
 import { headers } from "next/headers";
 
-export const runtime = "nodejs";
-export const revalidate = 0;
-
-type Profile = {
-  id: string;
-  name: string;
-  avatar_url: string | null;
-  aliases: string[];
-  stats: {
-    all_time: { total_points: number; results: number; avg_points: number };
-    current_season: {
-      total_points: number;
-      results: number;        // counted
-      avg_points: number;     // counted average
-      lowest_counted: number;
-    };
-  };
-  recent_results: Array<{
-    result_id: string;
-    event_id: string;
-    event_name: string;
-    event_date: string | null;
-    is_high_roller: boolean;
-    points: number;
-  }>;
-};
-
-// ---- data fetch + mapping (defensive; no ??/|| mixing) ----
-async function fetchProfileAbsolute(id: string): Promise<Profile | null> {
+async function apiFetch(pathWithQuery: string) {
   const h = await headers();
-  const host = (h.get("x-forwarded-host") ?? h.get("host")) ?? "localhost:3000";
-  const proto = (h.get("x-forwarded-proto") ?? "http");
-  const base = `${proto}://${host}`;
-
-  const res = await fetch(`${base}/api/players/${encodeURIComponent(id)}`, {
-    cache: "no-store",
-    headers: { "x-forwarded-host": host, "x-forwarded-proto": proto },
-  });
-  const json: any = await res.json().catch(() => ({}));
-  if (!res.ok || !json) return null;
-
-  const p = json.profile ?? {};
-  const s = (json.stats ?? p.stats) ?? {};
-  const at = s.all_time ?? {};
-  const cs = s.current_season ?? {};
-  const recentArr: any[] = Array.isArray(json.recent_results)
-    ? json.recent_results
-    : Array.isArray(p.recent_results)
-    ? p.recent_results
-    : [];
-
-  // safe name
-  let nameCandidate: string | undefined = p.name;
-  if (!nameCandidate) {
-    const first = (p.forename as string | undefined) ?? (p.first_name as string | undefined) ?? "";
-    const last  = (p.surname as string | undefined) ?? (p.last_name as string | undefined) ?? "";
-    const combo = `${first} ${last}`.trim();
-    nameCandidate = combo.length > 0 ? combo : undefined;
-  }
-  const finalName = (nameCandidate && nameCandidate.length > 0) ? nameCandidate : `Player ${id}`;
-
-  const mapped: Profile = {
-    id: String(p.id ?? json.id ?? id),
-    name: finalName,
-    avatar_url: p.avatar_url ?? null,
-    aliases: Array.isArray(p.aliases) ? p.aliases : [],
-    stats: {
-      all_time: {
-        total_points: Number(at.total_points ?? at.total ?? 0) || 0,
-        results: Number(at.results ?? at.count ?? 0) || 0,
-        avg_points: Number(at.avg_points ?? at.average ?? 0) || 0,
-      },
-      current_season: {
-        total_points: Number(cs.total_points ?? cs.total ?? 0) || 0,
-        results: Number(
-          (cs.results as number | undefined) ??
-          (cs.results_counted as number | undefined) ??
-          (cs.count_used as number | undefined) ??
-          (cs.used as number | undefined) ??
-          0
-        ) || 0,
-        avg_points: Number(
-          (cs.avg_points as number | undefined) ??
-          (cs.avg_counted as number | undefined) ??
-          (cs.average as number | undefined) ??
-          0
-        ) || 0,
-        lowest_counted: Number(cs.lowest_counted ?? cs.lowest ?? 0) || 0,
-      },
-    },
-    recent_results: recentArr.map((r: any) => {
-      const rawDate =
-        (r.event_date as string | undefined) ??
-        (r.date as string | undefined) ??
-        (r.start_date as string | undefined) ??
-        "";
-      const event_date = rawDate ? String(rawDate) : null;
-
-      return {
-        result_id: String(r.result_id ?? r.id ?? `${r.event_id ?? "evt"}-${rawDate}`),
-        event_id: String(r.event_id ?? r.tournament_id ?? r.id ?? ""),
-        event_name: String(r.event_name ?? r.tournament_name ?? r.name ?? "Event"),
-        event_date,
-        is_high_roller: Boolean(r.is_high_roller ?? r.is_hrl ?? r.hrl ?? false),
-        points: Number(r.points ?? r.score ?? 0) || 0,
-      };
-    }),
-  };
-
-  return mapped;
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const url = `${proto}://${host}${pathWithQuery}`;
+  return fetch(url, { cache: "no-store" });
 }
 
-// ---- small presentational helpers (server-safe) ----
-function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
-  return (
-    <div className="card p-4">
-      <div className="text-xs text-neutral-500">{label}</div>
-      <div className="text-xl font-semibold nums">{value}</div>
-      {sub ? <div className="text-xs text-neutral-500 mt-1">{sub}</div> : null}
-    </div>
-  );
+async function fetchPlayer(id: string) {
+  const res = await apiFetch(`/api/players/${id}`);
+  if (!res.ok) throw new Error("Player not found");
+  return res.json();
 }
 
-export default async function PlayerPage({ params }: { params: { id: string } }) {
-  const { id } = params;
-
-  const profile = await fetchProfileAbsolute(id);
-
-  if (!profile) {
-    return (
-      <div className="space-y-4">
-        <div className="card p-4">
-          <div className="text-red-600">Player not found or no data.</div>
-          <div className="mt-2">
-            <Link href="/players" className="underline">← Back to players</Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const at = profile.stats.all_time;
-  const cs = profile.stats.current_season;
+export default async function PlayerProfile({ params }: { params: { id: string } }) {
+  const data = await fetchPlayer(params.id);
+  const p = data.player;
 
   return (
-    <div className="space-y-6">
-      <nav className="text-sm">
-        <a className="underline" href="/">National Poker League</a>
-        <span className="mx-1">/</span>
-        <a className="underline" href="/players">Players</a>
-      </nav>
-
-      {/* Header */}
-      <div className="card p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="h-16 w-16 rounded-full bg-neutral-200 overflow-hidden grid place-items-center">
-              {profile.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={profile.avatar_url} alt={profile.name} className="h-full w-full object-cover" />
-              ) : (
-                <span className="text-lg font-semibold">
-                  {profile.name?.slice(0, 1) || "?"}
-                </span>
-              )}
-            </div>
-            <div>
-              <h1 className="text-2xl font-semibold">{profile.name || `Player ${id}`}</h1>
-              {profile.aliases?.length ? (
-                <div className="text-xs text-neutral-500">aka {profile.aliases.join(", ")}</div>
-              ) : null}
-            </div>
-          </div>
-          <div className="text-sm">
-            <Link href="/players" className="underline">← Back to players</Link>
-          </div>
-        </div>
-      </div>
-
-      {/* All-time snapshot */}
-      <section className="space-y-2">
-        <div className="card-header">All-Time</div>
-        <div className="grid sm:grid-cols-3 gap-3">
-          <StatCard label="Total Points" value={at.total_points.toFixed(2)} />
-          <StatCard label="Results" value={at.results} sub={`${at.avg_points.toFixed(2)} avg`} />
-          <StatCard label="Avg Points" value={at.avg_points.toFixed(2)} />
-        </div>
-      </section>
-
-      {/* Current season snapshot */}
-      <section className="space-y-2">
-        <div className="card-header">Current Season</div>
-        <div className="grid sm:grid-cols-4 gap-3">
-          <StatCard label="Total Points" value={cs.total_points.toFixed(2)} />
-          <StatCard label="Results Counted" value={cs.results} />
-          <StatCard label="Avg (Counted)" value={cs.avg_points.toFixed(2)} />
-          <StatCard label="Lowest Counted" value={cs.lowest_counted.toFixed(2)} />
-        </div>
-      </section>
-
-      {/* Recent results */}
-      <section className="card overflow-x-auto">
-        <div className="card-header">Recent Results</div>
-        {!profile.recent_results?.length ? (
-          <div className="card-body text-sm text-neutral-600">No recent results.</div>
+    <main className="mx-auto max-w-3xl p-6 space-y-6">
+      <div className="flex items-center gap-4">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {p.avatar_url ? (
+          <img src={p.avatar_url} alt="" className="h-16 w-16 rounded-full" />
         ) : (
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th className="text-left">Date</th>
-                <th className="text-left">Event</th>
-                <th className="text-left">League</th>
-                <th className="text-right">Points</th>
-              </tr>
-            </thead>
-            <tbody>
-              {profile.recent_results.map((r) => (
-                <tr key={r.result_id} className="align-top">
-                  <td>{r.event_date ?? "—"}</td>
-                  <td className="p-3">
-  <a className="underline" href={`/events/${encodeURIComponent(r.event_id)}`}>
-    {r.event_name}
-  </a>
-</td>
-                  <td>
-                    <span className={`badge ${r.is_high_roller ? "badge-hrl" : "badge-npl"}`}>
-                      {r.is_high_roller ? "HRL" : "NPL"}
-                    </span>
-                  </td>
-                  <td className="text-right nums">{r.points.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="h-16 w-16 rounded-full border" />
         )}
+        <div>
+          <h1 className="text-2xl font-semibold">{p.name}</h1>
+          <div className="text-sm opacity-70">{p.consent ? "Consent: Yes" : "Consent: No"}</div>
+        </div>
+      </div>
+
+      <section className="rounded-2xl border p-4">
+        <h2 className="mb-2 font-semibold">Stats</h2>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="rounded-xl border p-3">
+            <div className="text-sm opacity-70">Lifetime points</div>
+            <div className="text-xl font-semibold">{data.stats.lifetime_points}</div>
+          </div>
+          <div className="rounded-xl border p-3">
+            <div className="text-sm opacity-70">Recent results</div>
+            <div className="text-xl font-semibold">{data.stats.recent_results_count}</div>
+          </div>
+        </div>
       </section>
-    </div>
+
+      <section className="rounded-2xl border p-4">
+        <h2 className="mb-3 font-semibold">Recent results</h2>
+        <ul className="space-y-2">
+          {data.recent_results.map((r: any) => (
+            <li key={r.id} className="rounded-xl border p-3">
+              <div className="flex items-center justify-between">
+                <div className="font-medium">{r.event?.name || "Event"}</div>
+                <div className="text-sm opacity-70">
+                  {r.event?.start_date ? new Date(r.event.start_date).toLocaleDateString() : ""}
+                </div>
+              </div>
+              <div className="text-sm opacity-80">
+                {r.points ?? 0} pts • {r.prize_amount ? `£${r.prize_amount}` : "–"} •{" "}
+                {typeof r.position_of_prize === "number" ? `#${r.position_of_prize}` : "—"}
+              </div>
+              <div className="text-xs opacity-60">
+                {r.event?.site_name ? `Site: ${r.event.site_name}` : ""}
+                {r.event?.buy_in_raw ? ` • Buy-in: ${r.event.buy_in_raw}` : ""}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <Link href="/players" className="inline-block rounded-xl border px-3 py-2">
+        ← Back to players
+      </Link>
+    </main>
   );
 }

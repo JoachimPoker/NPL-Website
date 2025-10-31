@@ -1,22 +1,12 @@
 // src/app/leaderboards/page.tsx
 import { headers } from "next/headers";
+import Link from "next/link";
 
 export const runtime = "nodejs";
 export const revalidate = 0;
 
-/* ---------------- Types (aligned with your API) ---------------- */
-type LbRow = {
-  position: number;
-  player_id: string;
-  name: string;
-  total_points: number;
-  results_display: string;  // e.g. "20 (27)"
-  average_display: string;  // e.g. "18.23 (16.10)"
-  lowest_points: number;
-  top_results?: number[];   // for advanced BEST-X table
-};
-
-type SeasonMeta = {
+/* ---------- Types matching /api/leaderboards/season ---------- */
+type MetaSeason = {
   id: number;
   label: string;
   start_date: string;
@@ -26,457 +16,313 @@ type SeasonMeta = {
   is_active: boolean;
 };
 
-type SeasonResp = { season?: SeasonMeta; leaderboard: LbRow[]; _error?: string };
-type AllTimeResp = { leaderboard: LbRow[]; _error?: string };
+type Row = {
+  position: number;
+  player_id: string;
+  display_name: string;
+  total_points: number;
+  used_count: number;
+  total_count: number;
+  average_used: number;
+  average_all: number;
+  best_single: number;
+  lowest_counted: number | null;
+  top3_count: number;
+  top9_count: number;
+  wins: number;
+};
 
-/* ---------------- Helpers ---------------- */
-function readParam(
-  searchParams: Record<string, string | string[] | undefined>,
-  key: string,
-  fallback: string
-) {
-  const raw = Array.isArray(searchParams[key]) ? searchParams[key]?.[0] : searchParams[key];
-  return raw !== undefined ? raw : fallback;
-}
+type SuccessResp = {
+  ok: true;
+  meta: {
+    league: "npl" | "hrl";
+    season: MetaSeason;
+    limit: number;
+    offset: number;
+    total_hint?: number;
+  };
+  rows: Row[];
+};
 
-function parseParams(searchParams: Record<string, string | string[] | undefined>) {
-  const scopeStr = readParam(searchParams, "scope", "season").toLowerCase();
-  const typeStr = readParam(searchParams, "type", "npl").toLowerCase();
-  const modeStr = readParam(searchParams, "mode", "simple").toLowerCase();
+type ErrorResp = { ok: false; error: string };
+type ApiResp = SuccessResp | ErrorResp;
 
-  const scope = (scopeStr === "all-time" ? "all-time" : "season") as "season" | "all-time";
-  const type = (typeStr === "hrl" ? "hrl" : "npl") as "npl" | "hrl";
-  const mode = (modeStr === "advanced" ? "advanced" : "simple") as "simple" | "advanced";
-
-  const seasonId = readParam(searchParams, "seasonId", "current");
-
-  const methodRaw = readParam(searchParams, "method", "BEST_X").toUpperCase();
-  const methodParam = (methodRaw === "ALL" ? "ALL" : "BEST_X") as "ALL" | "BEST_X";
-  const isUncapped = scope === "all-time" && methodParam === "ALL";
-
-  const capParsed = Number(readParam(searchParams, "cap", "20"));
-  const cap = Number.isFinite(capParsed) && capParsed > 0 ? Math.min(capParsed, 1000) : 20;
-
-  const limitParsed = Number(readParam(searchParams, "limit", "100"));
-  const limit = Number.isFinite(limitParsed) && limitParsed > 0 ? Math.min(limitParsed, 5000) : 100;
-
-  // sorting
-  const sort = readParam(searchParams, "sort", "position"); // position | name | total | lowest
-  const dir = readParam(searchParams, "dir", "asc"); // asc | desc
-
-  return { scope, type, mode, seasonId, methodParam, isUncapped, cap, limit, sort, dir };
-}
-
+/* ---------- Helpers ---------- */
 async function baseUrl() {
   const h = await headers();
-  const host = (h.get("x-forwarded-host") ?? h.get("host")) ?? "localhost:3000";
-  const proto = (h.get("x-forwarded-proto") ?? "http");
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? "http";
   return `${proto}://${host}`;
 }
 
-async function fetchJSON<T>(path: string): Promise<T | null> {
-  const res = await fetch(`${await baseUrl()}${path}`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return (await res.json()) as T;
+function qs(obj: Record<string, string | number | undefined | null>) {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined || v === null || v === "") continue;
+    p.set(k, String(v));
+  }
+  const s = p.toString();
+  return s ? `?${s}` : "";
 }
 
-function cleanHref(params: Record<string, string | number | undefined>) {
-  const clean: Record<string, string | number> = {};
-  for (const [k, v] of Object.entries(params)) if (v !== undefined) clean[k] = v as any;
-  const usp = new URLSearchParams(clean as any).toString();
-  return `/leaderboards?${usp}`;
+function fmt(v: number | null | undefined) {
+  if (v === null || v === undefined) return "—";
+  return v.toFixed(2);
 }
 
-function toggleDir(current: string) {
-  return current === "asc" ? "desc" : "asc";
+function isSuccess(x: unknown): x is SuccessResp {
+  return !!x && typeof x === "object" && (x as any).ok === true && Array.isArray((x as any).rows);
 }
 
-function parseResultsUsed(s: string): number {
-  // "20 (27)" -> 20
-  const m = /^(\d+)/.exec(s);
-  if (!m) return 0;
-  const n = Number(m[1]);
-  return Number.isFinite(n) ? n : 0;
-}
-
-/* ---------------- Presentational (server-safe) ---------------- */
-function SortLink({
-  label,
-  sortKey,
-  currentSort,
-  currentDir,
-  params,
-  alignRight,
-}: {
-  label: string;
-  sortKey: string;
-  currentSort: string;
-  currentDir: string;
-  params: any;
-  alignRight?: boolean;
-}) {
-  const isActive = currentSort === sortKey;
-  const dir = isActive ? toggleDir(currentDir) : "desc";
-  const href = cleanHref({ ...params, sort: sortKey, dir });
-  return (
-    <a
-      className={`hover:underline ${alignRight ? "text-right block" : ""} ${
-        isActive ? "font-semibold" : ""
-      }`}
-      href={href}
-      title={`Sort by ${label}`}
-    >
-      {label}
-      {isActive ? (currentDir === "asc" ? " ▲" : " ▼") : ""}
-    </a>
-  );
-}
-
-function SimpleTable({
-  rows,
-  params,
-  sort,
-  dir,
-}: {
-  rows: LbRow[];
-  params: any;
-  sort: string;
-  dir: string;
-}) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="tbl">
-        <thead>
-          <tr>
-            <th className="text-left w-14">
-              <SortLink label="Pos" sortKey="position" currentSort={sort} currentDir={dir} params={params} />
-            </th>
-            <th className="text-left">
-              <SortLink label="Player" sortKey="name" currentSort={sort} currentDir={dir} params={params} />
-            </th>
-            <th className="text-right">
-              <SortLink label="Total" sortKey="total" currentSort={sort} currentDir={dir} params={params} alignRight />
-            </th>
-            <th className="text-right">
-              <SortLink label="Results" sortKey="results" currentSort={sort} currentDir={dir} params={params} alignRight />
-            </th>
-            <th className="text-right">Avg</th>
-            <th className="text-right">
-              <SortLink label="Lowest" sortKey="lowest" currentSort={sort} currentDir={dir} params={params} alignRight />
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.player_id}>
-              <td className="nums">{r.position}</td>
-              <td>
-                <a className="underline" href={`/players/${encodeURIComponent(r.player_id)}`}>
-                  {r.name}
-                </a>
-              </td>
-              <td className="text-right nums">{r.total_points.toFixed(2)}</td>
-              <td className="text-right">{r.results_display}</td>
-              <td className="text-right">{r.average_display}</td>
-              <td className="text-right nums">{r.lowest_points.toFixed(2)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function AdvancedTable({ rows, cap }: { rows: LbRow[]; cap: number }) {
-  const capCols: number[] = [];
-  for (let i = 1; i <= cap; i++) capCols.push(i);
-  return (
-    <div className="overflow-x-auto">
-      <table className="tbl">
-        <thead>
-          <tr>
-            <th className="text-left w-14">Pos</th>
-            <th className="text-left">Player</th>
-            <th className="text-right">Total</th>
-            {capCols.map((i) => (
-              <th key={i} className="text-right">{`R${i}`}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.player_id}>
-              <td className="nums">{r.position}</td>
-              <td>
-                <a className="underline" href={`/players/${encodeURIComponent(r.player_id)}`}>
-                  {r.name}
-                </a>
-              </td>
-              <td className="text-right nums">{r.total_points.toFixed(2)}</td>
-              {capCols.map((i) => {
-                const val = r.top_results && r.top_results[i - 1];
-                const hasVal = !(val === undefined || val === null);
-                return (
-                  <td key={i} className="text-right nums">
-                    {hasVal ? (val as number).toFixed(2) : "—"}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/* ---------------- Sorting (in-memory, server-side) ---------------- */
-function sortRows(rows: LbRow[], sort: string, dir: string): LbRow[] {
-  const copy = rows.slice();
-  const asc = dir !== "desc";
-  copy.sort((a, b) => {
-    let av = 0;
-    let bv = 0;
-
-    if (sort === "position") {
-      av = a.position; bv = b.position;
-    } else if (sort === "name") {
-      const an = a.name.toLowerCase();
-      const bn = b.name.toLowerCase();
-      if (an < bn) return asc ? -1 : 1;
-      if (an > bn) return asc ? 1 : -1;
-      return 0;
-    } else if (sort === "total") {
-      av = a.total_points; bv = b.total_points;
-    } else if (sort === "lowest") {
-      av = a.lowest_points; bv = b.lowest_points;
-    } else if (sort === "results") {
-      av = parseResultsUsed(a.results_display);
-      bv = parseResultsUsed(b.results_display);
-    } else {
-      av = a.position; bv = b.position;
-    }
-
-    if (av < bv) return asc ? -1 : 1;
-    if (av > bv) return asc ? 1 : -1;
-    return 0;
-  });
-  return copy;
-}
-
-/* ---------------- Page ---------------- */
+/* ---------- Server page (await searchParams) ---------- */
 export default async function LeaderboardsPage({
   searchParams,
 }: {
-  searchParams: Record<string, string | string[] | undefined>;
+  // Next 15: searchParams is async
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { scope, type, mode, seasonId, methodParam, isUncapped, cap, limit, sort, dir } =
-    parseParams(searchParams);
+  const spRaw = await searchParams;
+  const sp = Object.fromEntries(
+    Object.entries(spRaw ?? {}).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v])
+  );
 
-  // seasons for selector (season scope only)
-  const seasonsList = await fetchJSON<{ seasons: SeasonMeta[] }>("/api/seasons/list");
-  const seasons =
-    (seasonsList?.seasons ?? []).map((s) => ({
-      id: String(s.id),
-      label: s.label + (s.is_active ? " •" : ""),
-    })) || [];
+  // defaults
+  const league = (sp.league === "hrl" ? "hrl" : "npl") as "npl" | "hrl";
+  const seasonId = sp.seasonId || "current";
+  const method =
+    sp.method?.toUpperCase() === "BEST_X"
+      ? "BEST_X"
+      : sp.method?.toUpperCase() === "ALL"
+      ? "ALL"
+      : undefined;
+  const cap = sp.cap ? Number(sp.cap) : undefined;
+  const q = (sp.q || sp.search || "").trim();
+  const pageSize = Math.min(500, Math.max(10, Number(sp.limit ?? 100)));
+  const page = Math.max(1, Number(sp.page ?? 1));
+  const offset = (page - 1) * pageSize;
 
-  // data fetch
-  let data: SeasonResp | AllTimeResp | null = null;
-  if (scope === "season") {
-    data = await fetchJSON<SeasonResp>(
-      `/api/leaderboards/season?type=${type}&mode=${mode}&seasonId=${seasonId}&limit=${limit}`
+  // Build API query
+  const apiParams: Record<string, string | number | undefined> = {
+    league,
+    seasonId,
+    limit: pageSize,
+    offset,
+    q: q || undefined,
+    method,
+    cap: method === "BEST_X" ? cap : undefined,
+  };
+  const apiUrl = `${await baseUrl()}/api/leaderboards/season${qs(apiParams)}`;
+
+  const res = await fetch(apiUrl, { cache: "no-store" });
+  const data = (await res.json()) as ApiResp;
+
+  if (!res.ok || !isSuccess(data)) {
+    const msg = (!res.ok ? res.statusText : (data as ErrorResp).error) || "Unknown error";
+    return (
+      <div className="space-y-6">
+        <section className="card">
+          <div className="card-header"><h1 className="text-2xl font-semibold">Leaderboards</h1></div>
+          <div className="card-body">
+            <div className="p-2 rounded bg-red-100 text-red-700 text-sm">
+              Failed to load leaderboard: {msg}
+            </div>
+          </div>
+        </section>
+      </div>
     );
-  } else {
-    if (isUncapped) {
-      data = await fetchJSON<AllTimeResp>(
-        `/api/leaderboards/all-time?type=${type}&mode=${mode}&method=ALL&limit=${limit}`
-      );
-    } else {
-      data = await fetchJSON<AllTimeResp>(
-        `/api/leaderboards/all-time?type=${type}&mode=${mode}&method=BEST_X&cap=${cap}&limit=${limit}`
-      );
-    }
   }
 
-  const originalRows: LbRow[] = (data as any)?.leaderboard ?? [];
-  const rows = sortRows(originalRows, sort, dir);
+  const meta = data.meta;
+  const rows = data.rows;
+  const hasPrev = page > 1;
+  const hasNext = rows.length === pageSize; // optimistic; no exact total needed
 
-  const seasonMeta: SeasonMeta | null =
-    scope === "season" && (data as SeasonResp)?.season ? ((data as SeasonResp).season as SeasonMeta) : null;
+  // helpers to build navigation/search URLs
+  const baseParams = {
+    seasonId,
+    q: q || undefined,
+    method: method || undefined,
+    cap: method === "BEST_X" ? (cap ?? meta.season.cap_x ?? undefined) : undefined,
+    limit: pageSize,
+  };
 
-  const isCappedSeason = scope === "season" && seasonMeta?.method === "BEST_X";
-  const effectiveCap = scope === "season"
-    ? (seasonMeta?.cap_x ?? 0)
-    : (isUncapped ? 0 : cap); // all-time: 0 when uncapped
-
-  const title = scope === "season" && seasonMeta
-    ? `Seasonal ${type.toUpperCase()} Leaderboard — ${seasonMeta.label}`
-    : `All-Time ${type.toUpperCase()} Leaderboard`;
-
-  // If user picked All-Time + Advanced + Uncapped → fallback to simple with a note
-  const renderMode = scope === "all-time" && isUncapped && mode === "advanced" ? "simple" : mode;
-  const showUncappedAdvancedNote = scope === "all-time" && isUncapped && mode === "advanced";
-
-  // Right controls + CSV link
-  const baseParams = { scope, type, mode, seasonId, method: isUncapped ? "ALL" : "BEST_X", cap, limit, sort, dir };
-  const csvUrl =
-    scope === "season"
-      ? `/api/leaderboards/season?type=${type}&mode=${mode}&seasonId=${seasonId}&limit=${limit}&format=csv`
-      : isUncapped
-      ? `/api/leaderboards/all-time?type=${type}&mode=${mode}&method=ALL&limit=${limit}&format=csv`
-      : `/api/leaderboards/all-time?type=${type}&mode=${mode}&method=BEST_X&cap=${cap}&limit=${limit}&format=csv`;
-
-  const rightControls = (
-    <div className="flex flex-wrap items-center gap-2">
-      {/* Scope */}
-      <span className="text-neutral-600">Scope:</span>
-      <a
-        className={`underline ${scope === "season" ? "font-semibold" : ""}`}
-        href={cleanHref({ ...baseParams, scope: "season" })}
-      >
-        Season
-      </a>
-      <a
-        className={`underline ${scope === "all-time" ? "font-semibold" : ""}`}
-        href={cleanHref({ ...baseParams, scope: "all-time" })}
-      >
-        All-Time
-      </a>
-
-      {/* Type */}
-      <span className="text-neutral-600 ml-3">League:</span>
-      <a
-        className={`underline ${type === "npl" ? "font-semibold" : ""}`}
-        href={cleanHref({ ...baseParams, type: "npl" })}
-      >
-        NPL
-      </a>
-      <a
-        className={`underline ${type === "hrl" ? "font-semibold" : ""}`}
-        href={cleanHref({ ...baseParams, type: "hrl" })}
-      >
-        HRL
-      </a>
-
-      {/* Mode */}
-      <span className="text-neutral-600 ml-3">View:</span>
-      <a
-        className={`underline ${mode === "simple" ? "font-semibold" : ""}`}
-        href={cleanHref({ ...baseParams, mode: "simple" })}
-      >
-        Simple
-      </a>
-      <a
-        className={`underline ${mode === "advanced" ? "font-semibold" : ""}`}
-        href={cleanHref({ ...baseParams, mode: "advanced" })}
-      >
-        Advanced
-      </a>
-
-      {/* Seasons (only for seasonal scope) */}
-      {scope === "season" && (
-        <>
-          <span className="text-neutral-600 ml-3">Season:</span>
-          <a
-            className={`underline ${seasonId === "current" ? "font-semibold" : ""}`}
-            href={cleanHref({ ...baseParams, seasonId: "current" })}
-          >
-            Current
-          </a>
-          {seasons.map((s) => (
-            <a
-              key={s.id}
-              className={`underline ${String(seasonId) === s.id ? "font-semibold" : ""}`}
-              href={cleanHref({ ...baseParams, seasonId: s.id })}
-            >
-              {s.label}
-            </a>
-          ))}
-        </>
-      )}
-
-      {/* Caps (All-Time only) */}
-      {scope === "all-time" && (
-        <>
-          <span className="text-neutral-600 ml-3">Cap:</span>
-          <a
-            className={`underline ${isUncapped ? "font-semibold" : ""}`}
-            href={cleanHref({ ...baseParams, method: "ALL" })}
-          >
-            Uncapped
-          </a>
-          {[10, 20, 30].map((c) => (
-            <a
-              key={c}
-              className={`underline ${!isUncapped && cap === c ? "font-semibold" : ""}`}
-              href={cleanHref({ ...baseParams, method: "BEST_X", cap: c })}
-            >
-              {c}
-            </a>
-          ))}
-        </>
-      )}
-
-      {/* Limit */}
-      <span className="text-neutral-600 ml-3">Limit:</span>
-      {[50, 100, 200].map((n) => (
-        <a
-          key={n}
-          className={`underline ${limit === n ? "font-semibold" : ""}`}
-          href={cleanHref({ ...baseParams, limit: n })}
-        >
-          {n}
-        </a>
-      ))}
-
-      {/* CSV */}
-      <span className="mx-2 opacity-50">•</span>
-      <a className="underline" href={csvUrl}>Export CSV</a>
-    </div>
-  );
+  const makeUrl = (extra: Record<string, string | number | undefined>) =>
+    `/leaderboards${qs({ ...baseParams, league, ...extra })}`;
 
   return (
     <div className="space-y-6">
-      <section className="card overflow-hidden">
-        <div className="card-header flex flex-wrap items-center justify-between gap-2">
+      {/* Header */}
+      <section className="card">
+        <div
+          className="card-header flex items-center justify-between"
+        >
           <div>
-            {scope === "season" && seasonMeta
-              ? `Seasonal ${type.toUpperCase()} Leaderboard — ${seasonMeta.label}`
-              : `All-Time ${type.toUpperCase()} Leaderboard`}
+            <h1 className="text-2xl font-semibold">Leaderboards</h1>
+            <div className="text-sm text-neutral-600 mt-1">
+              Season: <b>{meta.season.label}</b> &middot; {meta.season.start_date} → {meta.season.end_date}
+            </div>
           </div>
-          {rightControls}
+          <div className="flex items-center gap-2">
+            <Link
+              className={`rounded-md border px-3 py-1.5 text-sm ${league === "npl" ? "bg-neutral-100" : ""}`}
+              href={`/leaderboards${qs({ ...baseParams, league: "npl", page: 1 })}`}
+            >
+              NPL
+            </Link>
+            <Link
+              className={`rounded-md border px-3 py-1.5 text-sm ${league === "hrl" ? "bg-neutral-100" : ""}`}
+              href={`/leaderboards${qs({ ...baseParams, league: "hrl", page: 1 })}`}
+            >
+              High Roller League
+            </Link>
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div className="card-body space-y-3">
+          <form action="/leaderboards" method="get" className="grid md:grid-cols-4 gap-3">
+            {/* keep params when submitting */}
+            <input type="hidden" name="league" value={league} />
+            <input type="hidden" name="seasonId" value={seasonId} />
+            <input type="hidden" name="limit" value={pageSize} />
+
+            <div className="md:col-span-2">
+              <label className="block text-sm text-neutral-600">Search players</label>
+              <input
+                className="w-full border rounded px-2 py-1"
+                name="q"
+                defaultValue={q}
+                placeholder="Name or alias…"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-neutral-600">Method</label>
+              <select className="w-full border rounded px-2 py-1" name="method" defaultValue={method ?? meta.season.method}>
+                <option value="ALL">ALL</option>
+                <option value="BEST_X">BEST_X</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm text-neutral-600">Cap (for BEST_X)</label>
+              <input
+                className="w-full border rounded px-2 py-1"
+                name="cap"
+                type="number"
+                min={0}
+                defaultValue={
+                  method === "BEST_X"
+                    ? (cap ?? meta.season.cap_x ?? 0)
+                    : meta.season.method === "BEST_X"
+                    ? (meta.season.cap_x ?? 0)
+                    : 0
+                }
+              />
+            </div>
+
+            <div className="md:col-span-4 flex items-center gap-2">
+              <label className="text-sm">Page size:</label>
+              <select className="border rounded px-2 py-1 text-sm" name="limit" defaultValue={pageSize}>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={200}>200</option>
+                <option value={500}>500</option>
+              </select>
+
+              <button className="rounded-md border px-3 py-1.5 text-sm" type="submit">
+                Apply
+              </button>
+
+              {/* Reset search (preserve league & seasonId) */}
+              {q && (
+                <Link
+                  className="rounded-md border px-3 py-1.5 text-sm"
+                  href={`/leaderboards${qs({ ...baseParams, q: undefined, page: 1, league })}`}
+                >
+                  Clear search
+                </Link>
+              )}
+            </div>
+          </form>
+        </div>
+      </section>
+
+      {/* Table */}
+      <section className="card overflow-hidden">
+        <div className="card-header flex items-center justify-between">
+          <b>{league === "npl" ? "National Poker League" : "High Roller League"} — {meta.season.label}</b>
+          <div className="flex items-center gap-2 text-sm">
+            <span>Method:&nbsp;<b>{(sp.method?.toUpperCase() as "ALL" | "BEST_X") || meta.season.method}</b></span>
+            {(sp.method?.toUpperCase() === "BEST_X" || meta.season.method === "BEST_X") && (
+              <span>Cap:&nbsp;<b>{sp.cap ?? meta.season.cap_x ?? 0}</b></span>
+            )}
+          </div>
         </div>
         <div className="card-body">
           {!rows.length ? (
-            <div className="text-sm text-neutral-600">No data yet.</div>
-          ) : renderMode === "advanced" ? (
-            <AdvancedTable rows={rows} cap={effectiveCap || 0} />
+            <div className="text-sm text-neutral-600">No results.</div>
           ) : (
-            <SimpleTable rows={rows} params={baseParams} sort={sort} dir={dir} />
+            <div className="overflow-x-auto">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th className="text-left w-16">Pos</th>
+                    <th className="text-left">Player</th>
+                    <th className="text-right">Total</th>
+                    <th className="text-right">Used</th>
+                    <th className="text-right">All</th>
+                    <th className="text-right">Avg (used)</th>
+                    <th className="text-right">Avg (all)</th>
+                    <th className="text-right">Best</th>
+                    <th className="text-right">Lowest</th>
+                    <th className="text-right">Wins</th>
+                    <th className="text-right">Top-3</th>
+                    <th className="text-right">Top-9</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r: Row) => (
+                    <tr key={r.player_id}>
+                      <td className="nums">{r.position}</td>
+                      <td>
+                        <Link className="underline" href={`/players/${encodeURIComponent(r.player_id)}`}>
+                          {r.display_name}
+                        </Link>
+                      </td>
+                      <td className="text-right">{fmt(r.total_points)}</td>
+                      <td className="text-right">{r.used_count}</td>
+                      <td className="text-right">{r.total_count}</td>
+                      <td className="text-right">{fmt(r.average_used)}</td>
+                      <td className="text-right">{fmt(r.average_all)}</td>
+                      <td className="text-right">{fmt(r.best_single)}</td>
+                      <td className="text-right">{fmt(r.lowest_counted)}</td>
+                      <td className="text-right">{r.wins}</td>
+                      <td className="text-right">{r.top3_count}</td>
+                      <td className="text-right">{r.top9_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
+        </div>
 
-          {/* Helper text */}
-          {scope === "season" && isCappedSeason && renderMode === "simple" && (
-            <p className="mt-2 text-xs text-neutral-500">
-              “Results” shows <b>used</b> results first, then total in brackets (e.g., <code>20 (27)</code>). “Avg” shows used average (total average in brackets).
-            </p>
-          )}
-          {scope === "all-time" && !isUncapped && (
-            <p className="mt-2 text-xs text-neutral-500">
-              Showing <b>Best {cap}</b> results (change the cap above).
-            </p>
-          )}
-          {scope === "all-time" && isUncapped && (
-            <p className="mt-2 text-xs text-neutral-500">
-              Showing <b>all results</b> (choose a numeric cap above for BEST-X).
-            </p>
-          )}
-          {showUncappedAdvancedNote && (
-            <p className="mt-2 text-xs text-amber-600">
-              Advanced view requires a numeric cap. Showing Simple view instead.
-            </p>
-          )}
+        {/* Pagination */}
+        <div className="card-footer flex items-center justify-between px-4 py-3">
+          <Link
+            className={`rounded-md border px-3 py-1 ${page > 1 ? "" : "pointer-events-none opacity-50"}`}
+            href={page > 1 ? makeUrl({ page: page - 1 }) : "#"}
+          >
+            ← Prev
+          </Link>
+          <div className="text-sm">Page {page}</div>
+          <Link
+            className={`rounded-md border px-3 py-1 ${rows.length === pageSize ? "" : "pointer-events-none opacity-50"}`}
+            href={rows.length === pageSize ? makeUrl({ page: page + 1 }) : "#"}
+          >
+            Next →
+          </Link>
         </div>
       </section>
     </div>

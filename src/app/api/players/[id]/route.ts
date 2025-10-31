@@ -1,177 +1,77 @@
-// src/app/api/players/[id]/route.ts
-import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { NextRequest, NextResponse } from "next/server";
+import { createSupabaseRouteClient } from "@/lib/supabaseServer"; // ⬅️
+import { displayName } from "@/lib/nameMask";
 
-export const runtime = "nodejs";
-export const revalidate = 0;
+export const dynamic = "force-dynamic";
 
-type Season = {
-  id: number;
-  start_date: string;
-  end_date: string;
-  method: "ALL" | "BEST_X";
-  cap_x: number | null;
-  is_active: boolean;
+type PlayerRow = {
+  id: string;
+  forename: string | null;
+  surname: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
 };
 
-export async function GET(
-  _req: Request,
-  ctx: { params: Promise<{ id: string }> }
-) {
-  const s = supabaseAdmin();
-  try {
-    const { id } = await ctx.params;
-    const playerId = String(id || "").trim();
-    if (!playerId) {
-      return NextResponse.json({ _error: "Missing player id" }, { status: 400 });
-    }
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const supabase = await createSupabaseRouteClient(); // ⬅️
+  const playerId = params.id;
 
-    // 1) Load player + aliases
-    const { data: p, error: pErr } = await s
-      .from("players")
-      .select(
-        `
-        id,
-        forename,
-        surname,
-        display_name,
-        avatar_url,
-        created_at,
-        player_aliases(alias)
-      `
-      )
-      .eq("id", playerId)
-      .maybeSingle();
+  const { data: player, error: pErr } = await supabase
+    .from("players")
+    .select("id, forename, surname, display_name, avatar_url")
+    .eq("id", playerId)
+    .single<PlayerRow>();
 
-    if (pErr) throw pErr;
-    if (!p) return NextResponse.json({ _error: "Player not found" }, { status: 404 });
-
-    const name =
-      (p.display_name && String(p.display_name).trim()) ||
-      [p.forename, p.surname].filter(Boolean).join(" ").trim() ||
-      `Player ${playerId}`;
-
-    const aliases = (p.player_aliases || []).map((a: any) => a.alias).filter(Boolean);
-
-    // 2) Load recent results (JOIN events) — correct foreign order usage
-    const { data: recentRows, error: rErr } = await s
-      .from("results")
-      .select(
-        `
-        id,
-        event_id,
-        points,
-        events!inner(
-          id,
-          name,
-          start_date,
-          is_high_roller
-        )
-      `
-      )
-      .eq("player_id", playerId)
-      .eq("is_deleted", false)
-      .order("start_date", { ascending: false, foreignTable: "events" }) // <-- key fix
-      .limit(25);
-
-    if (rErr) throw rErr;
-
-    const recent_results = (recentRows || []).map((row: any) => ({
-      result_id: String(row.id),
-      event_id: String(row.event_id),
-      event_name: row.events?.name ?? "—",
-      event_date: row.events?.start_date ?? null,
-      is_high_roller: !!row.events?.is_high_roller,
-      points: Number(row.points || 0),
-    }));
-
-    // 3) All-time aggregates (no join needed)
-    const { data: allRows, error: aErr } = await s
-      .from("results")
-      .select("points")
-      .eq("player_id", playerId)
-      .eq("is_deleted", false)
-      .limit(100000); // practical guard
-
-    if (aErr) throw aErr;
-
-    const allPts = (allRows || []).map((r: any) => Number(r.points || 0));
-    const allSum = allPts.reduce((a, b) => a + b, 0);
-    const allCnt = allPts.length;
-    const allAvg = allCnt ? allSum / allCnt : 0;
-
-    // 4) Current season aggregates (needs events join for date filter)
-    const { data: season, error: sErr } = await s
-      .from("seasons")
-      .select("*")
-      .eq("is_active", true)
-      .maybeSingle<Season>();
-    if (sErr) throw sErr;
-
-    let seasonSum = 0,
-      seasonCnt = 0,
-      seasonAvg = 0,
-      seasonLowestCounted = 0;
-
-    if (season) {
-      const { data: seasonRows, error: srErr } = await s
-        .from("results")
-        .select(
-          `
-          points,
-          events!inner(start_date)
-        `
-        )
-        .eq("player_id", playerId)
-        .eq("is_deleted", false)
-        .gte("events.start_date", season.start_date)
-        .lte("events.start_date", season.end_date)
-        .limit(100000);
-
-      if (srErr) throw srErr;
-
-      const sPts = (seasonRows || []).map((r: any) => Number(r.points || 0)).sort((a, b) => b - a);
-      if (season.method === "BEST_X" && season.cap_x && season.cap_x > 0) {
-        const used = sPts.slice(0, season.cap_x);
-        seasonSum = used.reduce((a, b) => a + b, 0);
-        seasonCnt = used.length;
-        seasonAvg = seasonCnt ? seasonSum / seasonCnt : 0;
-        seasonLowestCounted = seasonCnt ? used[used.length - 1] : 0;
-      } else {
-        seasonSum = sPts.reduce((a, b) => a + b, 0);
-        seasonCnt = sPts.length;
-        seasonAvg = seasonCnt ? seasonSum / seasonCnt : 0;
-        seasonLowestCounted = seasonCnt ? sPts[sPts.length - 1] : 0;
-      }
-    }
-
-    const profile = {
-      id: p.id,
-      name,
-      avatar_url: p.avatar_url ?? null,
-      bio: "",
-      aliases,
-      stats: {
-        all_time: {
-          total_points: Number(allSum.toFixed(2)),
-          results: allCnt,
-          avg_points: Number(allAvg.toFixed(2)),
-        },
-        current_season: {
-          total_points: Number(seasonSum.toFixed(2)),
-          results: seasonCnt,
-          avg_points: Number(seasonAvg.toFixed(2)),
-          lowest_counted: Number(seasonLowestCounted.toFixed(2)),
-        },
-      },
-      recent_results,
-    };
-
-    return NextResponse.json({ profile });
-  } catch (e: any) {
-    return NextResponse.json(
-      { _error: e?.message || String(e) },
-      { status: 500 }
-    );
+  if (pErr || !player) {
+    return NextResponse.json({ error: pErr?.message || "Not found" }, { status: 404 });
   }
+
+  const { data: consentRows, error: cErr } = await supabase
+    .from("results")
+    .select("gdpr_flag")
+    .eq("player_id", playerId);
+  if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
+  const consent = (consentRows || []).some((r: any) => !!r.gdpr_flag);
+
+  const { data: results, error: rErr } = await supabase
+    .from("results")
+    .select(`id, points, prize_amount, position_of_prize, created_at,
+             events:event_id ( id, name, start_date, site_name, buy_in_raw )`)
+    .eq("player_id", playerId)
+    .order("created_at", { ascending: false })
+    .limit(30);
+  if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 });
+
+  const { data: ptsAgg } = await supabase
+    .from("results")
+    .select("points")
+    .eq("player_id", playerId);
+  const lifetime_points = (ptsAgg || []).reduce((acc: number, row: any) => acc + (Number(row.points) || 0), 0);
+
+  return NextResponse.json({
+    player: {
+      id: player.id,
+      name: displayName(player.forename, player.surname, consent, player.display_name),
+      avatar_url: player.avatar_url,
+      consent,
+    },
+    stats: {
+      lifetime_points,
+      recent_results_count: results?.length || 0,
+    },
+    recent_results: (results || []).map((r: any) => ({
+      id: r.id,
+      points: r.points,
+      prize_amount: r.prize_amount,
+      position_of_prize: r.position_of_prize,
+      created_at: r.created_at,
+      event: r.events ? {
+        id: r.events.id,
+        name: r.events.name,
+        start_date: r.events.start_date,
+        site_name: r.events.site_name,
+        buy_in_raw: r.events.buy_in_raw,
+      } : null,
+    })),
+  });
 }

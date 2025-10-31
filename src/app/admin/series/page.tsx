@@ -1,123 +1,115 @@
 // src/app/admin/series/page.tsx
-import { headers } from "next/headers";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { createSupabaseServerClient } from "@/lib/supabaseServer";
 
 export const runtime = "nodejs";
 export const revalidate = 0;
 
-type AdminSeries = {
-  id: string;
+type SeriesRow = {
+  id: number;
   name: string;
-  slug?: string | null;
-  keywords?: string | null;
+  slug: string | null;
+  description: string | null;
   is_active: boolean;
 };
 
-async function baseUrl() {
-  const h = await headers();
-  const host = (h.get("x-forwarded-host") ?? h.get("host")) ?? "localhost:3000";
-  const proto = (h.get("x-forwarded-proto") ?? "http");
-  return `${proto}://${host}`;
-}
-async function fetchJSON<T>(path: string): Promise<T | null> {
-  const res = await fetch(`${await baseUrl()}${path}`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return (await res.json()) as T;
-}
-
-/** Similar multi-endpoint loader, but biased to admin endpoints. */
-async function loadAdminSeries(): Promise<AdminSeries[]> {
-  const candidates = [
-    "/api/admin/series/list",
-    "/api/admin/series",
-    "/api/series/list",
-    "/api/series",
-  ];
-  for (const path of candidates) {
-    const resp = await fetchJSON<any>(path);
-    if (!resp) continue;
-
-    const raw: any[] =
-      (Array.isArray(resp) ? resp : undefined) ??
-      resp?.series ??
-      resp?.items ??
-      resp?.data ??
-      resp?.rows ??
-      [];
-
-    if (Array.isArray(raw)) {
-      return raw.map((s: any) => ({
-        id: String(s.id ?? s.series_id ?? s.slug ?? s.key ?? ""),
-        name: String(s.name ?? s.label ?? s.title ?? "Series"),
-        slug:
-          typeof s.slug === "string"
-            ? s.slug
-            : typeof s.key === "string"
-            ? s.key
-            : null,
-        keywords:
-          typeof s.keywords === "string"
-            ? s.keywords
-            : Array.isArray(s.keywords)
-            ? s.keywords.join(", ")
-            : null,
-        is_active: Boolean(s.is_active ?? s.active ?? s.enabled ?? true),
-      }));
-    }
-  }
-  return [];
-}
-
-function Button({ children, href, subtle }: { children: React.ReactNode; href?: string; subtle?: boolean }) {
-  const cls = subtle
-    ? "rounded-md border px-2 py-1 text-sm"
-    : "rounded-md border px-3 py-1.5 text-sm";
-  return href ? (
-    <a className={cls} href={href}>
-      {children}
-    </a>
-  ) : (
-    <span className={`${cls} opacity-50 pointer-events-none`}>{children}</span>
-  );
+async function requireAdmin() {
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase.auth.getUser();
+  const user = data?.user;
+  if (!user) redirect(`/login?next=/admin/series`);
+  const roles: string[] = ((user.app_metadata as any)?.roles ?? []) as string[];
+  const isAdmin =
+    roles.includes("admin") ||
+    (user.app_metadata as any)?.role === "admin" ||
+    (user.user_metadata as any)?.is_admin === true;
+  if (!isAdmin) redirect("/");
+  return supabase;
 }
 
 export default async function AdminSeriesPage() {
-  const rows = await loadAdminSeries();
+  const supabase = await requireAdmin();
+
+  const { data, error } = await supabase
+    .from("series")
+    .select("id,name,slug,description,is_active")
+    .order("name", { ascending: true });
+
+  // Make TS happy – guarantee an array for the rest of the component
+  const rows: SeriesRow[] = (data ?? []) as SeriesRow[];
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="card">
+          <div className="card-body flex items-center justify-between gap-3">
+            <div>
+              <div className="text-lg font-semibold">Admin — Series</div>
+              <div className="text-xs text-neutral-500 dark:text-neutral-300">
+                Manage all series
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link href="/admin" className="rounded-md border px-3 py-1.5 text-sm">
+                Dashboard
+              </Link>
+              <Link href="/admin/series/new" className="rounded-md border px-3 py-1.5 text-sm">
+                + New Series
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-body text-sm text-red-600 dark:text-red-400">
+            Failed to load series: {error.message}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header bar */}
-      <section className="card p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold">Admin — Series</h1>
+      <div className="card">
+        <div className="card-body flex items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold">Admin — Series</div>
+            <div className="text-xs text-neutral-500 dark:text-neutral-300">
+              Manage all series
+            </div>
+          </div>
           <div className="flex items-center gap-2">
-            <a className="rounded-md border px-3 py-1.5 text-sm" href="/admin/seasons">
-              Seasons
-            </a>
-            <a className="rounded-md border px-3 py-1.5 text-sm" href="/admin/import">
-              Import
-            </a>
-            <a className="rounded-md border px-3 py-1.5 text-sm" href="/admin/series/auto-assign">
-              Auto-assign all
-            </a>
-            <a className="rounded-md border px-3 py-1.5 text-sm" href="/admin/series/new">
+            <Link href="/admin" className="rounded-md border px-3 py-1.5 text-sm">
+              Dashboard
+            </Link>
+            <Link href="/admin/series/new" className="rounded-md border px-3 py-1.5 text-sm">
               + New Series
-            </a>
+            </Link>
           </div>
         </div>
-      </section>
+      </div>
 
-      {/* Table */}
       <section className="card overflow-x-auto">
-        <div className="card-header">Series</div>
-        {!rows.length ? (
-          <div className="card-body text-sm text-neutral-600">No series yet.</div>
+        <div className="card-header flex items-center justify-between">
+          <span>Series</span>
+          <Link href="/admin/series" className="text-sm underline">
+            Refresh
+          </Link>
+        </div>
+
+        {rows.length === 0 ? (
+          <div className="card-body text-sm text-neutral-600 dark:text-neutral-300">
+            No series yet.
+          </div>
         ) : (
           <table className="tbl">
             <thead>
               <tr>
                 <th className="text-left">Name</th>
                 <th className="text-left">Slug</th>
-                <th className="text-left">Keywords</th>
+                <th className="text-left">Description</th>
                 <th className="text-left">Active</th>
                 <th className="text-left">Actions</th>
               </tr>
@@ -127,22 +119,27 @@ export default async function AdminSeriesPage() {
                 <tr key={s.id}>
                   <td className="font-medium">{s.name}</td>
                   <td>{s.slug ?? ""}</td>
-                  <td className="text-neutral-600">{s.keywords ?? ""}</td>
+                  <td className="text-neutral-600 dark:text-neutral-300">
+                    {s.description ?? ""}
+                  </td>
                   <td>
                     {s.is_active ? (
-                      <span className="badge border-green-300 text-green-700 bg-green-50">Active</span>
+                      <span className="badge border-green-300 text-green-700 bg-green-50 dark:border-green-700 dark:text-green-300 dark:bg-green-950">
+                        Active
+                      </span>
                     ) : (
-                      <span className="badge border-neutral-300 text-neutral-700 bg-neutral-50">Inactive</span>
+                      <span className="badge border-neutral-300 text-neutral-700 bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:bg-neutral-900">
+                        Inactive
+                      </span>
                     )}
                   </td>
                   <td className="space-x-2 whitespace-nowrap">
-                    <Button href={`/admin/series/${encodeURIComponent(s.id)}`}>Manage</Button>
-                    <Button href={`/admin/series/${encodeURIComponent(s.id)}/edit`} subtle>
-                      Edit
-                    </Button>
-                    <Button href={`/admin/series/${encodeURIComponent(s.id)}/delete`} subtle>
-                      Delete
-                    </Button>
+                    <Link
+                      className="rounded-md border px-2 py-1 text-sm"
+                      href={`/admin/series/${s.id}`}
+                    >
+                      Manage
+                    </Link>
                   </td>
                 </tr>
               ))}

@@ -1,75 +1,81 @@
-import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { NextResponse } from 'next/server'
+import { createSupabaseRouteClient } from '@/lib/supabaseServer'
 
-export const runtime = "nodejs";
-export const revalidate = 0;
+export const runtime = 'nodejs'
+export const revalidate = 0
 
-/**
- * POST body:
- * {
- *   id: string (uuid),
- *   label: string,
- *   city?: string | null,
- *   start_date: string (YYYY-MM-DD),
- *   end_date:   string (YYYY-MM-DD)
- * }
- *
- * - Updates the existing festival in-place.
- * - If the (series_id, label) unique is violated, it auto-disambiguates by adding " YYYY".
- */
+type Body = {
+  id: string // festivals.id (uuid)
+  label?: string
+  city?: string | null
+  start_date?: string // YYYY-MM-DD
+  end_date?: string // YYYY-MM-DD
+}
+
+function bad(code: number, msg: string) {
+  return NextResponse.json({ ok: false, error: msg }, { status: code })
+}
+
+async function requireAdmin() {
+  const supabase = await createSupabaseRouteClient()
+  const { data: ures, error: uerr } = await supabase.auth.getUser()
+  if (uerr || !ures?.user) return { ok: false as const, code: 401, msg: 'Unauthorized', supabase }
+  const roles: string[] = ((ures.user?.app_metadata as any)?.roles as string[]) || []
+  const isAdmin =
+    roles.includes('admin') ||
+    (ures.user?.app_metadata as any)?.role === 'admin' ||
+    (ures.user?.user_metadata as any)?.is_admin === true
+  if (!isAdmin) return { ok: false as const, code: 403, msg: 'Forbidden', supabase }
+  return { ok: true as const, supabase }
+}
+
 export async function POST(req: Request) {
   try {
-    const s = supabaseAdmin();
-    const body = await req.json().catch(() => ({}));
+    const auth = await requireAdmin()
+    if (!auth.ok) return bad(auth.code, auth.msg)
+    const supabase = auth.supabase
 
-    const id = String(body.id || "").trim();
-    const label = String(body.label || "").trim();
-    const city = body.city == null ? null : String(body.city).trim() || null;
-    const start_date = String(body.start_date || "").trim();
-    const end_date = String(body.end_date || "").trim();
+    const body = (await req.json().catch(() => null)) as Body | null
+    if (!body) return bad(400, 'Invalid JSON body')
 
-    if (!id) return NextResponse.json({ _error: "Missing id" }, { status: 400 });
-    if (!label) return NextResponse.json({ _error: "Missing label" }, { status: 400 });
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(start_date) || !/^\d{4}-\d{2}-\d{2}$/.test(end_date)) {
-      return NextResponse.json({ _error: "Missing/invalid start_date or end_date" }, { status: 400 });
+    const { id, label, city, start_date, end_date } = body
+    if (!id) return bad(400, 'id is required')
+
+    // Build patch only with provided fields
+    const patch: Record<string, any> = { updated_at: new Date().toISOString() }
+    if (typeof label === 'string') patch.label = label.trim()
+    if (typeof city === 'string' || city === null) patch.city = city
+    if (typeof start_date === 'string') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(start_date)) return bad(400, 'start_date must be YYYY-MM-DD')
+      patch.start_date = start_date.slice(0, 10)
+    }
+    if (typeof end_date === 'string') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(end_date)) return bad(400, 'end_date must be YYYY-MM-DD')
+      patch.end_date = end_date.slice(0, 10)
+    }
+    if (patch.start_date && patch.end_date && new Date(patch.start_date) > new Date(patch.end_date)) {
+      return bad(400, 'start_date cannot be after end_date')
     }
 
-    // Ensure the festival exists and get its series_id for label disambiguation
-    const { data: existing, error: exErr } = await s
-      .from("festivals")
-      .select("id, series_id")
-      .eq("id", id)
-      .maybeSingle();
-    if (exErr) throw exErr;
-    if (!existing) return NextResponse.json({ _error: "Festival not found" }, { status: 404 });
+    // Verify it exists first (nice errors)
+    const { data: existing, error: exErr } = await supabase
+      .from('festivals')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle()
+    if (exErr) return bad(500, exErr.message)
+    if (!existing) return bad(404, 'Festival not found')
 
-    // Attempt the update
-    let { data, error } = await s
-      .from("festivals")
-      .update({ label, city, start_date, end_date })
-      .eq("id", id)
-      .select("*")
-      .single();
+    const { data, error } = await supabase
+      .from('festivals')
+      .update(patch)
+      .eq('id', id)
+      .select('id,label,city,start_date,end_date,series_id')
+      .maybeSingle()
 
-    // Handle unique label per series clash, retry with disambiguated label
-    if (error && /unique|duplicate|23505/i.test(String(error.message || ""))) {
-      const year = start_date.slice(0, 4);
-      const newLabel = `${label} ${year}`;
-      const retry = await s
-        .from("festivals")
-        .update({ label: newLabel, city, start_date, end_date })
-        .eq("id", id)
-        .select("*")
-        .single();
-      data = retry.data;
-      error = retry.error;
-    }
-
-    if (error) throw error;
-    if (!data) return NextResponse.json({ _error: "Update failed" }, { status: 500 });
-
-    return NextResponse.json({ ok: true, festival: data });
+    if (error) return bad(500, error.message)
+    return NextResponse.json({ ok: true, festival: data })
   } catch (e: any) {
-    return NextResponse.json({ _error: String(e?.message || e) }, { status: 500 });
+    return bad(500, e?.message || 'Internal error')
   }
 }

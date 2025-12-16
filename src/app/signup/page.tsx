@@ -15,11 +15,14 @@ export default function SignupPage() {
 
   async function signUp(e: React.FormEvent) {
     e.preventDefault()
-    setErr(null); setMsg(null)
+    setErr(null)
+    setMsg(null)
+
     if (password !== confirm) {
       setErr('Passwords do not match.')
       return
     }
+
     setBusy(true)
     const { error } = await supabase.auth.signUp({
       email,
@@ -28,55 +31,82 @@ export default function SignupPage() {
       options: { data: { is_admin: false } },
     })
     setBusy(false)
-    if (error) { setErr(error.message); return }
+
+    if (error) {
+      setErr(error.message)
+      return
+    }
+
     setMsg('Account created. You can sign in now.')
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="w-full max-w-md space-y-6">
-        <h1 className="text-2xl font-semibold">Create account</h1>
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <div className="card bg-base-100 shadow-xl">
+          <div className="card-body space-y-4">
+            <h1 className="card-title text-2xl">Create account</h1>
 
-        <form onSubmit={signUp} className="space-y-3">
-          <input
-            className="w-full border rounded-xl p-3"
-            type="email"
-            placeholder="you@domain.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <input
-            className="w-full border rounded-xl p-3"
-            type="password"
-            placeholder="Choose a password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={6}
-          />
-          <input
-            className="w-full border rounded-xl p-3"
-            type="password"
-            placeholder="Confirm password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            required
-            minLength={6}
-          />
-          <button
-            disabled={busy}
-            className="w-full rounded-xl p-3 bg-black text-white disabled:opacity-60"
-          >
-            {busy ? 'Creating…' : 'Create account'}
-          </button>
-        </form>
+            <form onSubmit={signUp} className="space-y-3">
+              <input
+                className="input input-bordered w-full"
+                type="email"
+                placeholder="you@domain.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+              />
+              <input
+                className="input input-bordered w-full"
+                type="password"
+                placeholder="Choose a password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+                autoComplete="new-password"
+              />
+              <input
+                className="input input-bordered w-full"
+                type="password"
+                placeholder="Confirm password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                required
+                minLength={6}
+                autoComplete="new-password"
+              />
 
-        {err && <p className="text-sm text-red-600">{err}</p>}
-        {msg && <p className="text-sm text-green-700">{msg}</p>}
+              <button
+                disabled={busy}
+                className="btn btn-primary w-full"
+                type="submit"
+              >
+                {busy ? 'Creating…' : 'Create account'}
+              </button>
+            </form>
 
-        <div className="text-sm">
-          Already have an account? <Link href="/login" className="underline">Sign in</Link>
+            {err && (
+              <p className="text-sm text-error">
+                {err}
+              </p>
+            )}
+            {msg && (
+              <p className="text-sm text-success">
+                {msg}
+              </p>
+            )}
+
+            <div className="text-sm flex items-center justify-between pt-2">
+              <span className="text-base-content/70">
+                Already have an account?
+              </span>
+              <Link href="/login" className="link link-hover">
+                Sign in
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>

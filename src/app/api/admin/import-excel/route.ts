@@ -1,3 +1,4 @@
+// src/app/api/admin/import-excel/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { cookies } from "next/headers";
@@ -231,6 +232,14 @@ export async function POST(req: NextRequest) {
       .from("import_batches")
       .update({ status: "normalized", processed_count: totalInserted } as any)
       .eq("id", batch?.id);
+
+    // ⬇️ NEW: Auto-trigger the leaderboard snapshot ⬇️
+    // We swallow errors here so a snapshot failure doesn't report the whole import as failed
+    try {
+      await supabase.rpc("take_weekly_leaderboard_snapshot");
+    } catch (snapErr) {
+      console.error("Auto-snapshot failed:", snapErr);
+    }
 
     return NextResponse.json({
       ok: true,

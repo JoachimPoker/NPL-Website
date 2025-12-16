@@ -1,8 +1,8 @@
-// src/app/events/page.tsx
 import { headers } from "next/headers";
+import Link from "next/link";
 
 export const runtime = "nodejs";
-export const revalidate = 0;
+export const revalidate = 60;
 
 type Series = {
   id: string;
@@ -28,8 +28,8 @@ async function fetchJSON<T>(path: string): Promise<T | null> {
 async function loadSeries(): Promise<Series[]> {
   const candidates = [
     "/api/series/list",
-    "/api/series",              // sometimes list endpoints are plural base
-    "/api/admin/series/list",   // admin variants
+    "/api/series",
+    "/api/admin/series/list",
     "/api/admin/series",
   ];
 
@@ -50,8 +50,7 @@ async function loadSeries(): Promise<Series[]> {
         const id = String(s.id ?? s.series_id ?? s.slug ?? s.key ?? "");
         const label = String(s.label ?? s.name ?? s.title ?? "Series");
         const is_active = Boolean(s.is_active ?? s.active ?? s.enabled ?? true);
-        const description =
-          typeof s.description === "string" ? s.description : null;
+        const description = typeof s.description === "string" ? s.description : null;
         return { id, label, is_active, description };
       });
     }
@@ -63,60 +62,58 @@ export default async function EventsOverviewPage() {
   const items = await loadSeries();
 
   return (
-    <div className="space-y-6">
-      <section className="card overflow-hidden">
-        <div className="card-header flex items-center justify-between">
-          <div>Events — Series Overview</div>
-          <div className="text-sm">
-            <a className="underline" href="/admin/series">Manage series →</a>
+    <div className="container mx-auto max-w-7xl space-y-8 py-8 px-4">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-white/5 pb-6">
+        <div>
+          <h1 className="text-4xl font-black uppercase italic tracking-tighter text-white">
+            Tournaments
+          </h1>
+          <p className="text-base-content/60 mt-1 font-medium">
+            Browse events by Series
+          </p>
+        </div>
+      </div>
+
+      {/* Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {!items.length ? (
+          <div className="col-span-full p-12 text-center card bg-base-100 border border-white/5">
+            <p className="text-base-content/50 italic">No tournament series found.</p>
           </div>
-        </div>
-        <div className="card-body">
-          {!items.length ? (
-            <div className="text-sm text-neutral-600">
-              No series found. (If you see them in Admin, this page was hitting a
-              different endpoint — now fixed to check admin/public endpoints.)
-            </div>
-          ) : (
-            <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {items.map((s) => (
-                <li key={s.id} className="card p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="font-semibold">
-                        <a
-                          className="underline"
-                          href={`/events/${encodeURIComponent(s.id)}`}
-                        >
-                          {s.label}
-                        </a>
-                      </div>
-                      {s.description ? (
-                        <p className="text-sm text-neutral-600 mt-1">
-                          {s.description}
-                        </p>
-                      ) : null}
-                    </div>
-                    {s.is_active ? (
-                      <span className="text-xs text-green-600">• active</span>
-                    ) : (
-                      <span className="text-xs text-neutral-400">inactive</span>
-                    )}
-                  </div>
-                  <div className="mt-3 text-sm">
-                    <a
-                      className="underline"
-                      href={`/events/${encodeURIComponent(s.id)}`}
-                    >
-                      View series →
-                    </a>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
+        ) : (
+          items.map((s) => (
+            <Link 
+              key={s.id} 
+              href={`/events/${encodeURIComponent(s.id)}`}
+              className="card bg-base-100 shadow-xl border border-white/5 hover:border-primary/50 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 group"
+            >
+              <div className="card-body">
+                <div className="flex items-start justify-between">
+                  <h3 className="card-title text-xl font-bold group-hover:text-primary transition-colors">
+                    {s.label}
+                  </h3>
+                  {s.is_active && (
+                    <div className="badge badge-success badge-sm font-bold uppercase text-xs">Active</div>
+                  )}
+                </div>
+                
+                {s.description && (
+                  <p className="text-sm text-base-content/60 line-clamp-2 mt-2">
+                    {s.description}
+                  </p>
+                )}
+                
+                <div className="card-actions justify-end mt-4">
+                  <span className="text-xs font-bold uppercase tracking-widest text-base-content/40 group-hover:text-primary transition-colors">
+                    View Series →
+                  </span>
+                </div>
+              </div>
+            </Link>
+          ))
+        )}
+      </div>
     </div>
   );
 }

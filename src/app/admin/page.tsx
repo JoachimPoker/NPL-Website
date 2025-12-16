@@ -1,7 +1,7 @@
-// src/app/admin/page.tsx
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import SnapshotButton from "@/components/SnapshotButton";
 
 export const runtime = "nodejs";
 export const revalidate = 0;
@@ -18,13 +18,13 @@ function fmtUk(d?: string | null) {
   if (!d) return "—";
   const dt = new Date(d);
   if (isNaN(dt.getTime())) return d;
-  return dt.toLocaleDateString("en-GB");
+  return dt.toLocaleDateString("en-GB", { day: 'numeric', month: 'short', year: '2-digit' });
 }
 
 export default async function AdminHome() {
   const supabase = await createSupabaseServerClient();
 
-  // ---- Auth gate (middleware also guards /admin) ----
+  // ---- Auth gate ----
   const { data: userRes } = await supabase.auth.getUser();
   const user = userRes?.user;
   if (!user) redirect(`/login?next=/admin`);
@@ -72,54 +72,85 @@ export default async function AdminHome() {
   const lastChanges = lastChangesRes.data ?? [];
 
   return (
-    <div className="space-y-6">
-      {/* KPI cards */}
+    <div className="container mx-auto max-w-7xl space-y-8 py-8 px-4">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-b border-white/5 pb-6">
+        <div>
+          <h1 className="text-4xl font-black uppercase italic tracking-tighter text-white">
+            Admin Dashboard
+          </h1>
+          <p className="text-base-content/60 mt-1 font-medium">
+            System Overview & Management
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <Link href="/" className="btn btn-ghost btn-sm uppercase font-bold">
+            View Live Site
+          </Link>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Players" value={playersCount.toLocaleString("en-GB")} href="/admin/players" />
-        <KpiCard label="Events" value={eventsCount.toLocaleString("en-GB")} href="/admin/series" />
-        <KpiCard label="Results (active)" value={resultsCount.toLocaleString("en-GB")} href="/leaderboards" />
+        <KpiCard label="Total Players" value={playersCount.toLocaleString("en-GB")} href="/admin/players" />
+        <KpiCard label="Events Tracked" value={eventsCount.toLocaleString("en-GB")} href="/admin/series" />
+        <KpiCard label="Results Logged" value={resultsCount.toLocaleString("en-GB")} href="/leaderboards" />
         <KpiCard
-          label="Active season"
+          label="Active Season"
           value={activeSeason ? activeSeason.label : "None"}
-          hint={
-            activeSeason
-              ? `${fmtUk(activeSeason.start_date)} → ${fmtUk(activeSeason.end_date)}`
-              : "No active season"
-          }
+          hint={activeSeason ? `${fmtUk(activeSeason.start_date)} → ${fmtUk(activeSeason.end_date)}` : "No active season"}
           href="/admin/seasons"
+          isHighlight
         />
       </section>
 
-      {/* Recent activity */}
+      {/* Quick Actions */}
+      <section className="card bg-base-100 shadow-xl border border-white/5">
+        <div className="card-body p-6">
+          <h3 className="text-sm font-bold uppercase tracking-widest text-base-content/40 mb-4">Quick Actions</h3>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/admin/import-excel" className="btn btn-primary btn-sm uppercase font-bold">
+              📥 Import Excel
+            </Link>
+            <Link href="/admin/series" className="btn btn-outline btn-sm uppercase font-bold">
+              📅 Manage Series
+            </Link>
+            <Link href="/admin/players" className="btn btn-outline btn-sm uppercase font-bold">
+              👥 Edit Players
+            </Link>
+            <SnapshotButton />
+          </div>
+        </div>
+      </section>
+
+      {/* Recent Activity Grid */}
       <section className="grid gap-6 lg:grid-cols-2">
-        {/* Recent imports */}
-        <div className="card overflow-hidden">
-          <div className="card-header flex items-center justify-between">
-            <span>Recent Imports</span>
-            <Link href="/admin/import" className="text-sm underline">
-              Open import
+        {/* Recent Imports */}
+        <div className="card bg-base-100 shadow-xl border border-white/5 overflow-hidden">
+          <div className="card-header p-4 border-b border-white/5 flex justify-between items-center bg-base-200/20">
+            <span className="text-sm font-bold uppercase tracking-widest">Recent Imports</span>
+            <Link href="/admin/import-excel" className="text-xs font-bold text-primary uppercase hover:underline">
+              View All
             </Link>
           </div>
-          <div className="card-body p-0">
+          <div className="p-0 overflow-x-auto">
             {lastBatches.length === 0 ? (
-              <div className="p-4 text-sm text-neutral-600 dark:text-neutral-300">No imports yet.</div>
+              <div className="p-6 text-sm text-base-content/50 italic text-center">No imports yet.</div>
             ) : (
-              <table className="tbl">
+              <table className="table table-sm w-full">
                 <thead>
-                  <tr>
-                    <th className="text-left">When</th>
-                    <th className="text-left">File</th>
-                    <th className="text-left">By</th>
+                  <tr className="text-xs uppercase text-base-content/50 bg-base-200/30">
+                    <th>Date</th>
+                    <th>File</th>
                   </tr>
                 </thead>
                 <tbody>
                   {lastBatches.map((b: any) => (
-                    <tr key={b.id}>
-                      <td>{fmtUk(b.imported_at)}</td>
-                      <td className="truncate max-w-[260px]" title={b.filename}>
+                    <tr key={b.id} className="border-b border-white/5 last:border-0">
+                      <td className="font-mono text-xs opacity-70">{fmtUk(b.imported_at)}</td>
+                      <td className="font-bold text-sm truncate max-w-[200px]" title={b.filename}>
                         {b.filename}
                       </td>
-                      <td>{b.imported_by ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -128,49 +159,35 @@ export default async function AdminHome() {
           </div>
         </div>
 
-        {/* Recent result changes */}
-        <div className="card overflow-hidden">
-          <div className="card-header">Recent Result Changes</div>
-          <div className="card-body p-0">
+        {/* Recent Changes */}
+        <div className="card bg-base-100 shadow-xl border border-white/5 overflow-hidden">
+          <div className="card-header p-4 border-b border-white/5 bg-base-200/20">
+            <span className="text-sm font-bold uppercase tracking-widest">Audit Log</span>
+          </div>
+          <div className="p-0 overflow-x-auto">
             {lastChanges.length === 0 ? (
-              <div className="p-4 text-sm text-neutral-600 dark:text-neutral-300">No changes yet.</div>
+              <div className="p-6 text-sm text-base-content/50 italic text-center">No changes recorded.</div>
             ) : (
-              <table className="tbl">
+              <table className="table table-sm w-full">
                 <thead>
-                  <tr>
-                    <th className="text-left">When</th>
-                    <th className="text-left">Change</th>
+                  <tr className="text-xs uppercase text-base-content/50 bg-base-200/30">
+                    <th>Date</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {lastChanges.map((c: any) => (
-                    <tr key={c.id}>
-                      <td>{fmtUk(c.changed_at)}</td>
-                      <td className="uppercase text-xs tracking-wide">{c.change_type}</td>
+                    <tr key={c.id} className="border-b border-white/5 last:border-0">
+                      <td className="font-mono text-xs opacity-70">{fmtUk(c.changed_at)}</td>
+                      <td className="uppercase text-xs font-bold tracking-wide">
+                        <span className="badge badge-ghost badge-sm">{c.change_type}</span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
           </div>
-        </div>
-      </section>
-
-      {/* Quick actions */}
-      <section className="card">
-        <div className="card-body flex flex-wrap items-center gap-3">
-          <Link href="/admin/seasons" className="rounded-md border px-3 py-2 text-sm">
-            Manage seasons
-          </Link>
-          <Link href="/admin/import-excel" className="rounded-md border px-3 py-2 text-sm">
-            Import weekly Excel
-          </Link>
-          <Link href="/admin/series" className="rounded-md border px-3 py-2 text-sm">
-            Assign series / festivals
-          </Link>
-          <Link href="/admin/players" className="rounded-md border px-3 py-2 text-sm">
-            Edit players
-          </Link>
         </div>
       </section>
     </div>
@@ -182,17 +199,23 @@ function KpiCard({
   value,
   hint,
   href,
+  isHighlight
 }: {
   label: string;
   value: string | number;
   hint?: string;
   href?: string;
+  isHighlight?: boolean;
 }) {
   const content = (
-    <div className="card p-4">
-      <div className="text-xs uppercase tracking-wide text-neutral-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold">{value}</div>
-      {hint ? <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-300">{hint}</div> : null}
+    <div className={`card shadow-lg border p-5 transition-all hover:-translate-y-1 hover:shadow-2xl group ${
+      isHighlight ? 'bg-primary/10 border-primary/30' : 'bg-base-100 border-white/5 hover:border-primary/30'
+    }`}>
+      <div className={`text-xs font-bold uppercase tracking-widest mb-1 ${
+        isHighlight ? 'text-primary' : 'text-base-content/40 group-hover:text-primary transition-colors'
+      }`}>{label}</div>
+      <div className="text-3xl font-black text-white">{value}</div>
+      {hint && <div className="mt-2 text-xs font-mono text-base-content/50">{hint}</div>}
     </div>
   );
   return href ? <Link href={href}>{content}</Link> : content;

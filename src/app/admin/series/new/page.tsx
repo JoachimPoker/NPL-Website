@@ -32,15 +32,13 @@ export default async function NewSeriesPage() {
     const descriptionRaw = String(formData.get("description") || "").trim();
 
     if (!name || !slug) {
-      // Simple guard; you could return a better error UI if you want
       redirect("/admin/series/new?error=Missing+name+or+slug");
     }
 
-    // optional: normalize Description to comma+space list
     const description =
       descriptionRaw
         .split(",")
-        .map(s => s.trim())
+        .map((s) => s.trim())
         .filter(Boolean)
         .join(", ") || null;
 
@@ -51,48 +49,59 @@ export default async function NewSeriesPage() {
       .single();
 
     if (error || !data?.id) {
-      // If slug unique constraint fails, this will also land here
-      redirect("/admin/series/new?error=" + encodeURIComponent(error?.message || "Failed to create series"));
+      redirect(
+        "/admin/series/new?error=" +
+          encodeURIComponent(error?.message || "Failed to create series")
+      );
     }
 
     redirect(`/admin/series/${data.id}`);
   }
 
-  // Render create form
   return (
     <div className="space-y-6">
-      {/* Top admin nav bar (same pattern as other admin pages) */}
-      <div className="card">
+      {/* Top admin nav bar */}
+      <div className="card bg-base-100 shadow-sm">
         <div className="card-body flex items-center justify-between gap-3">
           <div>
             <div className="text-lg font-semibold">Admin — Series</div>
-            <div className="text-xs text-neutral-500 dark:text-neutral-300">Create a new series</div>
+            <div className="text-xs text-base-content/70">
+              Create a new series
+            </div>
           </div>
           <div className="flex items-center gap-2">
-            <Link href="/admin" className="rounded-md border px-3 py-1.5 text-sm">Dashboard</Link>
-            <Link href="/admin/series" className="rounded-md border px-3 py-1.5 text-sm">All Series</Link>
+            <Link href="/admin" className="btn btn-ghost btn-sm">
+              Dashboard
+            </Link>
+            <Link href="/admin/series" className="btn btn-ghost btn-sm">
+              All Series
+            </Link>
           </div>
         </div>
       </div>
 
-      <form action={createSeries} className="card">
+      <form action={createSeries} className="card bg-base-100 shadow-sm">
         <div className="card-body space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="block text-sm font-medium">Name</span>
+            <label className="form-control">
+              <span className="label">
+                <span className="label-text text-sm">Name</span>
+              </span>
               <input
                 name="name"
-                className="mt-1 w-full border rounded px-3 py-2"
+                className="input input-bordered input-sm w-full"
                 placeholder="UKPL"
                 required
               />
             </label>
 
-            <label className="block">
-              <span className="block text-sm font-medium">Slug</span>
+            <label className="form-control">
+              <span className="label">
+                <span className="label-text text-sm">Slug</span>
+              </span>
               <input
                 name="slug"
-                className="mt-1 w-full border rounded px-3 py-2"
+                className="input input-bordered input-sm w-full"
                 placeholder="ukpl"
                 pattern="^[a-z0-9-]+$"
                 title="lowercase letters, numbers, and dashes only"
@@ -101,21 +110,33 @@ export default async function NewSeriesPage() {
             </label>
           </div>
 
-          <label className="block">
-            <span className="block text-sm font-medium">Description</span>
+          <label className="form-control">
+            <span className="label">
+              <span className="label-text text-sm">Description</span>
+            </span>
             <input
               name="description"
-              className="mt-1 w-full border rounded px-3 py-2"
+              className="input input-bordered input-sm w-full"
               placeholder="The UKPL is a 888 Live tournament"
             />
-            <p className="mt-1 text-xs text-neutral-500">
-              This is just what the series is about
+            <p className="mt-1 text-xs text-base-content/60">
+              This is just what the series is about.
             </p>
           </label>
 
-          <div className="flex items-center gap-2">
-            <button className="rounded-md border px-3 py-2 text-sm" type="submit">Create series</button>
-            <Link href="/admin/series" className="rounded-md border px-3 py-2 text-sm">Cancel</Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="btn btn-primary btn-sm"
+              type="submit"
+            >
+              Create series
+            </button>
+            <Link
+              href="/admin/series"
+              className="btn btn-ghost btn-sm"
+            >
+              Cancel
+            </Link>
           </div>
         </div>
       </form>

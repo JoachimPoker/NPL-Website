@@ -1,677 +1,318 @@
-// src/app/events/[seriesId]/page.tsx
-import { headers } from "next/headers";
+import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import Link from "next/link";
 
 export const runtime = "nodejs";
-export const revalidate = 0;
+export const revalidate = 60;
 
-/* ---------- UI types ---------- */
+/* ---------- Types ---------- */
 type LbRow = {
   position: number;
   player_id: string;
-  name: string;
+  display_name: string;
   total_points: number;
-  results_display: string;
-  average_display: string;
-  lowest_points: number;
-  top_results?: number[];
-};
-type SeasonMeta = {
-  id: number;
-  label: string;
-  start_date: string;
-  end_date: string;
-  method: "ALL" | "BEST_X";
-  cap_x: number | null;
-  is_active: boolean;
-};
-type SeriesMeta = { id: string; label: string };
-
-type Festival = {
-  id: string;
-  label: string;
-  start_date?: string | null;
-  end_date?: string | null;
-};
-type EventRow = {
-  id: string;
-  name: string;
-  date?: string | null;
-  venue?: string | null;
-  is_high_roller?: boolean;
+  events_played: number;
+  wins: number;
+  final_tables: number;
 };
 
-/* ---------- helpers ---------- */
-async function baseUrl() {
-  const h = await headers();
-  const host = (h.get("x-forwarded-host") ?? h.get("host")) ?? "localhost:3000";
-  const proto = (h.get("x-forwarded-proto") ?? "http");
-  return `${proto}://${host}`;
+/* ---------- Helpers ---------- */
+function getProgress(start?: string, end?: string) {
+  if (!start || !end) return 0;
+  const now = new Date().getTime();
+  const s = new Date(start).getTime();
+  const e = new Date(end).getTime();
+  if (now < s) return 0;
+  if (now > e) return 100;
+  return Math.min(100, Math.max(0, ((now - s) / (e - s)) * 100));
 }
 
-/** Try multiple candidate paths until one returns JSON (with debug logging). */
-async function fetchFirst<T>(
-  paths: string[],
-  debugArr: Array<{ kind: string; url: string; ok: boolean; sample?: string }>,
-  kind: string
-): Promise<T | null> {
-  for (const p of paths) {
-    const res = await fetch(`${await baseUrl()}${p}`, { cache: "no-store" });
-    const ok = res.ok;
-    let json: any = null;
-    try {
-      json = await res.json();
-    } catch {
-      // ignore parse error
-    }
-    debugArr.push({
-      kind,
-      url: p,
-      ok,
-      sample: ok && json ? JSON.stringify(Object.keys(json)).slice(0, 120) : undefined,
-    });
-    if (ok && json) return json as T;
-  }
-  return null;
+function getSeriesStatus(start?: string, end?: string) {
+  if (!start || !end) return { label: "Unknown", color: "badge-ghost" };
+  const now = new Date().getTime();
+  const s = new Date(start).getTime();
+  const e = new Date(end).getTime();
+  
+  if (now < s) return { label: "Upcoming", color: "badge-warning" };
+  if (now > e) return { label: "Completed", color: "badge-ghost opacity-50" };
+  return { label: "Live Now", color: "badge-error animate-pulse" };
 }
 
-function readParam(
-  sp: Record<string, string | string[] | undefined>,
-  key: string,
-  def: string
-) {
-  const raw = Array.isArray(sp[key]) ? sp[key]?.[0] : sp[key];
-  return raw !== undefined ? raw : def;
-}
+/* ---------- Page Component ---------- */
+export default async function SeriesPage(props: {
+  params: Promise<{ seriesId: string }>;
+  searchParams: Promise<{ scope?: string; page?: string }>;
+}) {
+  const params = await props.params;
+  const sp = await props.searchParams;
+  
+  const seriesId = Number(params.seriesId);
+  // Default to 'season' if not specified
+  const scope = sp.scope === "all_time" ? "all_time" : "season";
+  const currentPage = Number(sp.page || 1);
+  const pageSize = 50;
 
-function cleanHref(
-  seriesId: string,
-  params: Record<string, string | number | undefined>
-) {
-  const clean: Record<string, string | number> = {};
-  for (const [k, v] of Object.entries(params)) if (v !== undefined) clean[k] = v as any;
-  const qs = new URLSearchParams(clean as any).toString();
-  return `/events/${encodeURIComponent(seriesId)}?${qs}`;
-}
+  const supabase = await createSupabaseServerClient();
 
-/* ---------- normalizers ---------- */
-function normalizeLbRows(resp: any): { series?: SeriesMeta; rows: LbRow[] } {
-  const seriesRaw = resp?.series ?? resp?.meta ?? undefined;
-  const series: SeriesMeta | undefined = seriesRaw
-    ? {
-        id: String(seriesRaw.id ?? seriesRaw.series_id ?? seriesRaw.slug ?? ""),
-        label: String(seriesRaw.label ?? seriesRaw.name ?? `Series`),
-      }
-    : undefined;
+  // 1. Fetch Series Info
+  const { data: series } = await supabase
+    .from("series")
+    .select("id, name")
+    .eq("id", seriesId)
+    .single();
 
-  const arr: any[] =
-    (Array.isArray(resp?.leaderboard) ? resp.leaderboard : undefined) ??
-    (Array.isArray(resp?.rows) ? resp.rows : undefined) ??
-    (Array.isArray(resp?.data) ? resp.data : undefined) ??
-    (Array.isArray(resp) ? resp : []) ??
-    [];
+  // 2. Fetch Date Range (for progress bar)
+  const { data: dateRange } = await supabase
+    .from("events")
+    .select("start_date")
+    .eq("series_id", seriesId)
+    .order("start_date", { ascending: true });
+  
+  const startDate = dateRange?.[0]?.start_date;
+  const endDate = dateRange?.[dateRange.length - 1]?.start_date;
+  const progress = getProgress(startDate, endDate);
+  const status = getSeriesStatus(startDate, endDate);
 
-  const rows: LbRow[] = arr.map((r: any, i: number) => {
-    const used =
-      Number(
-        r.used_results ?? r.results_used ?? r.used ?? r.usedCount ?? r.results ?? 0
-      ) || 0;
-    const total =
-      Number(
-        r.total_results ??
-          r.results_total ??
-          r.total ??
-          r.totalCount ??
-          r.all_results ??
-          used
-      ) || used;
+  // 3. Fetch Recent Champions (Most recent 4 winners)
+  const { data: recentWinners } = await supabase
+    .from("results")
+    .select("points, event:events!inner(name, start_date, series_id), player:players(id, display_name, forename, surname)")
+    .eq("events.series_id", seriesId)
+    .eq("position_of_prize", 1)
+    .eq("is_deleted", false)
+    .order("event(start_date)", { ascending: false })
+    .limit(4);
 
-    const fmt = (v: any) =>
-      typeof v === "number" && Number.isFinite(v) ? v.toFixed(2) : String(v ?? "");
-
-    const average_display =
-      typeof r.average_display === "string"
-        ? r.average_display
-        : total && used && total !== used
-        ? `${fmt(r.avg_used ?? r.avg_points ?? r.average ?? 0)} (${fmt(
-            r.avg_all ?? r.avg_total ?? r.overall_average ?? 0
-          )})`
-        : fmt(r.avg_points ?? r.average ?? r.avg ?? 0);
-
-    const results_display =
-      typeof r.results_display === "string"
-        ? r.results_display
-        : total && used
-        ? `${used} (${total})`
-        : String(used || total || "");
-
-    return {
-      position: Number(r.position ?? r.rank ?? i + 1) || i + 1,
-      player_id: String(r.player_id ?? r.id ?? r.playerId ?? ""),
-      name: String(r.name ?? r.player_name ?? r.display_name ?? "Player"),
-      total_points: Number(r.total_points ?? r.total ?? r.points ?? r.sum ?? 0) || 0,
-      results_display,
-      average_display,
-      lowest_points: Number(r.lowest_points ?? r.lowest ?? r.min ?? 0) || 0,
-      top_results: Array.isArray(r.top_results) ? r.top_results : undefined,
-    };
+  // 4. Fetch Leaderboard (Using SCOPE instead of LEAGUE)
+  const { data: rawRows, error: lbError } = await supabase.rpc("leaderboard_for_series", {
+    p_series_id: seriesId,
+    p_scope: scope, 
   });
 
-  return { series, rows };
-}
+  if (lbError) console.error("Leaderboard Error:", lbError);
+  const allRows: LbRow[] = rawRows || [];
 
-function normalizeSeasons(resp: any): SeasonMeta[] {
-  const arr: any[] =
-    (Array.isArray(resp?.seasons) ? resp.seasons : undefined) ??
-    (Array.isArray(resp) ? resp : []) ??
-    [];
-  return arr.map((s) => ({
-    id: Number(s.id ?? s.season_id ?? 0),
-    label: String(s.label ?? s.name ?? s.title ?? ""),
-    start_date: String(s.start_date ?? s.start ?? ""),
-    end_date: String(s.end_date ?? s.end ?? ""),
-    method: (String(s.method ?? s.scoring_method ?? "BEST_X").toUpperCase() as any) ?? "BEST_X",
-    cap_x: (s.cap_x ?? s.cap ?? s.best_x ?? null) as number | null,
-    is_active: Boolean(s.is_active ?? s.active ?? s.current ?? false),
-  }));
-}
+  // Stats Calculations
+  const mostWins = [...allRows].sort((a, b) => b.wins - a.wins)[0];
+  const mostFts = [...allRows].sort((a, b) => b.final_tables - a.final_tables)[0];
+  const mostEvents = [...allRows].sort((a, b) => b.events_played - a.events_played)[0];
 
-function normalizeFestivals(resp: any): Festival[] {
-  const arr: any[] =
-    (Array.isArray(resp?.festivals) ? resp.festivals : undefined) ??
-    (Array.isArray(resp) ? resp : []) ??
-    [];
-  return arr.map((f) => ({
-    id: String(f.id ?? f.festival_id ?? f.slug ?? ""),
-    label: String(f.label ?? f.name ?? f.title ?? "Festival"),
-    start_date:
-      typeof f.start_date === "string"
-        ? f.start_date
-        : typeof f.date_from === "string"
-        ? f.date_from
-        : null,
-    end_date:
-      typeof f.end_date === "string"
-        ? f.end_date
-        : typeof f.date_to === "string"
-        ? f.date_to
-        : null,
-  }));
-}
+  // Pagination
+  const totalPlayers = allRows.length;
+  const totalPages = Math.ceil(totalPlayers / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedRows = allRows.slice(startIndex, startIndex + pageSize);
 
-function normalizeEvents(resp: any): EventRow[] {
-  const arr: any[] =
-    (Array.isArray(resp?.events) ? resp.events : undefined) ??
-    (Array.isArray(resp) ? resp : []) ??
-    [];
-  return arr.map((e) => ({
-    id: String(e.id ?? e.event_id ?? ""),
-    name: String(e.name ?? e.event_name ?? "Event"),
-    date:
-      typeof e.date === "string"
-        ? e.date
-        : typeof e.event_date === "string"
-        ? e.event_date
-        : null,
-    venue:
-      typeof e.venue === "string"
-        ? e.venue
-        : typeof e.location === "string"
-        ? e.location
-        : null,
-    is_high_roller: Boolean(e.is_high_roller ?? e.is_hrl ?? e.hrl ?? false),
-  }));
-}
-
-/* ---------- table ---------- */
-function SimpleTable({ rows }: { rows: LbRow[] }) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="tbl">
-        <thead>
-          <tr>
-            <th className="text-left w-14">Pos</th>
-            <th className="text-left">Player</th>
-            <th className="text-right">Total</th>
-            <th className="text-right">Results</th>
-            <th className="text-right">Avg</th>
-            <th className="text-right">Lowest</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.player_id}>
-              <td className="nums">{r.position}</td>
-              <td>
-                <a
-                  className="underline"
-                  href={`/players/${encodeURIComponent(r.player_id)}`}
-                >
-                  {r.name}
-                </a>
-              </td>
-              <td className="text-right nums">{r.total_points.toFixed(2)}</td>
-              <td className="text-right">{r.results_display}</td>
-              <td className="text-right">{r.average_display}</td>
-              <td className="text-right nums">{r.lowest_points.toFixed(2)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/* ---------- page ---------- */
-export default async function SeriesPage({
-  params,
-  searchParams,
-}: {
-  params: { seriesId: string };
-  searchParams: Record<string, string | string[] | undefined>;
-}) {
-  const { seriesId } = params;
-
-  const scopeStr = readParam(searchParams, "scope", "season").toLowerCase(); // season | all-time
-  const typeStr = readParam(searchParams, "type", "npl").toLowerCase(); // npl | hrl
-  const modeStr = readParam(searchParams, "mode", "simple").toLowerCase(); // simple | advanced
-  const seasonId = readParam(searchParams, "seasonId", "current");
-  const capNum = Number(readParam(searchParams, "cap", "20"));
-  const limitNum = Number(readParam(searchParams, "limit", "100"));
-  const debugOn = readParam(searchParams, "debug", "0") === "1";
-
-  const scope = scopeStr === "all-time" ? "all-time" : "season";
-  const type = (typeStr === "hrl" ? "hrl" : "npl") as "npl" | "hrl";
-  const mode = (modeStr === "advanced" ? "advanced" : "simple") as
-    | "simple"
-    | "advanced";
-  const cap = Number.isFinite(capNum) && capNum > 0 ? Math.min(capNum, 1000) : 20;
-  const limit =
-    Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 5000) : 100;
-
-  const debug: Array<{ kind: string; url: string; ok: boolean; sample?: string }> =
-    [];
-
-  // seasons list (for season scope)
-  const seasonsResp = await fetchFirst<{ seasons: SeasonMeta[] }>(
-    ["/api/seasons/list", "/api/admin/seasons/list"],
-    debug,
-    "seasons"
-  );
-  const seasons = seasonsResp ? normalizeSeasons(seasonsResp) : [];
-
-  // ----- leaderboard candidates -----
-  const lbCandidates: string[] = [];
-  const sid = encodeURIComponent(seriesId);
-
-  if (scope === "season") {
-    const sidSeason = encodeURIComponent(seasonId);
-    lbCandidates.push(
-      // explicit series leaderboard
-      `/api/leaderboards/series?seriesId=${sid}&scope=season&type=${type}&mode=${mode}&seasonId=${sidSeason}&limit=${limit}`,
-      `/api/leaderboards/series?id=${sid}&scope=season&type=${type}&mode=${mode}&seasonId=${sidSeason}&limit=${limit}`,
-      `/api/series/${sid}/leaderboard?scope=season&type=${type}&mode=${mode}&seasonId=${sidSeason}&limit=${limit}`,
-      `/api/series/leaderboard?seriesId=${sid}&scope=season&type=${type}&mode=${mode}&seasonId=${sidSeason}&limit=${limit}`,
-      `/api/leaderboards/series/${sid}?scope=season&type=${type}&mode=${mode}&seasonId=${sidSeason}&limit=${limit}`,
-
-      // piggy-back on your existing season endpoint with series filter variants
-      `/api/leaderboards/season?type=${type}&mode=${mode}&seasonId=${sidSeason}&seriesId=${sid}&limit=${limit}`,
-      `/api/leaderboards/season?type=${type}&mode=${mode}&seasonId=${sidSeason}&series=${sid}&limit=${limit}`,
-      `/api/leaderboards/season?type=${type}&mode=${mode}&seasonId=${sidSeason}&series_id=${sid}&limit=${limit}`
-    );
-  } else {
-    lbCandidates.push(
-      // explicit series all-time leaderboard
-      `/api/leaderboards/series?seriesId=${sid}&scope=all-time&type=${type}&mode=${mode}&cap=${cap}&limit=${limit}`,
-      `/api/leaderboards/series?id=${sid}&scope=all-time&type=${type}&mode=${mode}&cap=${cap}&limit=${limit}`,
-      `/api/series/${sid}/leaderboard?scope=all-time&type=${type}&mode=${mode}&cap=${cap}&limit=${limit}`,
-      `/api/series/leaderboard?seriesId=${sid}&scope=all-time&type=${type}&mode=${mode}&cap=${cap}&limit=${limit}`,
-      `/api/leaderboards/series/${sid}?scope=all-time&type=${type}&mode=${mode}&cap=${cap}&limit=${limit}`,
-
-      // piggy-back on your existing all-time endpoint with series filters
-      `/api/leaderboards/all-time?type=${type}&mode=${mode}&method=BEST_X&cap=${cap}&seriesId=${sid}&limit=${limit}`,
-      `/api/leaderboards/all-time?type=${type}&mode=${mode}&method=BEST_X&cap=${cap}&series=${sid}&limit=${limit}`,
-      `/api/leaderboards/all-time?type=${type}&mode=${mode}&method=BEST_X&cap=${cap}&series_id=${sid}&limit=${limit}`
-    );
-  }
-
-  const lbResp = await fetchFirst<any>(lbCandidates, debug, "series-leaderboard");
-  const { series: seriesMetaFromResp, rows } = lbResp
-    ? normalizeLbRows(lbResp)
-    : { series: undefined, rows: [] };
-  const seriesMeta: SeriesMeta =
-    seriesMetaFromResp ?? { id: seriesId, label: `Series ${seriesId}` };
-
-  // ----- festivals list candidates -----
-  const festResp = await fetchFirst<any>(
-    [
-      `/api/festivals/list?seriesId=${sid}`,
-      `/api/festivals?seriesId=${sid}`,
-      `/api/festivals/list?series=${sid}`,
-      `/api/festivals/list?series_id=${sid}`,
-      `/api/series/${sid}/festivals`,
-      `/api/admin/festivals/list?seriesId=${sid}`,
-    ],
-    debug,
-    "festivals"
-  );
-  const festivals = festResp ? normalizeFestivals(festResp) : [];
-
-  // Fallback: if no festivals, fetch events by series
-  let events: EventRow[] = [];
-  if (festivals.length === 0) {
-    const seriesEvents = await fetchFirst<any>(
-      [
-        `/api/events/list?seriesId=${sid}`,
-        `/api/events/list?series=${sid}`,
-        `/api/events/list?series_id=${sid}`,
-        `/api/events?seriesId=${sid}`,
-        `/api/events?series=${sid}`,
-        `/api/events?series_id=${sid}`,
-        `/api/series/${sid}/events`,
-        `/api/admin/events/list?seriesId=${sid}`,
-      ],
-      debug,
-      "series-events"
-    );
-    events = seriesEvents ? normalizeEvents(seriesEvents) : [];
-  }
-
-  const rightControls = (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-neutral-600">Scope:</span>
-      <a
-        className={`underline ${scope === "season" ? "font-semibold" : ""}`}
-        href={cleanHref(seriesId, {
-          scope: "season",
-          type,
-          mode,
-          seasonId,
-          limit,
-          debug: debugOn ? 1 : undefined,
-        })}
-      >
-        Season
-      </a>
-      <a
-        className={`underline ${scope === "all-time" ? "font-semibold" : ""}`}
-        href={cleanHref(seriesId, {
-          scope: "all-time",
-          type,
-          mode,
-          cap,
-          limit,
-          debug: debugOn ? 1 : undefined,
-        })}
-      >
-        All-Time
-      </a>
-
-      <span className="text-neutral-600 ml-3">League:</span>
-      <a
-        className={`underline ${type === "npl" ? "font-semibold" : ""}`}
-        href={cleanHref(seriesId, {
-          scope,
-          type: "npl",
-          mode,
-          seasonId,
-          cap,
-          limit,
-          debug: debugOn ? 1 : undefined,
-        })}
-      >
-        NPL
-      </a>
-      <a
-        className={`underline ${type === "hrl" ? "font-semibold" : ""}`}
-        href={cleanHref(seriesId, {
-          scope,
-          type: "hrl",
-          mode,
-          seasonId,
-          cap,
-          limit,
-          debug: debugOn ? 1 : undefined,
-        })}
-      >
-        HRL
-      </a>
-
-      <span className="text-neutral-600 ml-3">View:</span>
-      <a
-        className={`underline ${mode === "simple" ? "font-semibold" : ""}`}
-        href={cleanHref(seriesId, {
-          scope,
-          type,
-          mode: "simple",
-          seasonId,
-          cap,
-          limit,
-          debug: debugOn ? 1 : undefined,
-        })}
-      >
-        Simple
-      </a>
-      <a
-        className={`underline ${mode === "advanced" ? "font-semibold" : ""}`}
-        href={cleanHref(seriesId, {
-          scope,
-          type,
-          mode: "advanced",
-          seasonId,
-          cap,
-          limit,
-          debug: debugOn ? 1 : undefined,
-        })}
-      >
-        Advanced
-      </a>
-
-      {scope === "season" && (
-        <>
-          <span className="text-neutral-600 ml-3">Season:</span>
-          <a
-            className={`underline ${seasonId === "current" ? "font-semibold" : ""}`}
-            href={cleanHref(seriesId, {
-              scope,
-              type,
-              mode,
-              seasonId: "current",
-              limit,
-              debug: debugOn ? 1 : undefined,
-            })}
-          >
-            Current
-          </a>
-          {seasons.map((s) => (
-            <a
-              key={s.id}
-              className={`underline ${
-                String(seasonId) === String(s.id) ? "font-semibold" : ""
-              }`}
-              href={cleanHref(seriesId, {
-                scope,
-                type,
-                mode,
-                seasonId: s.id,
-                limit,
-                debug: debugOn ? 1 : undefined,
-              })}
-            >
-              {s.label}
-              {s.is_active ? " •" : ""}
-            </a>
-          ))}
-        </>
-      )}
-
-      {scope === "all-time" && (
-        <>
-          <span className="text-neutral-600 ml-3">Cap:</span>
-          {[10, 20, 30].map((c) => (
-            <a
-              key={c}
-              className={`underline ${cap === c ? "font-semibold" : ""}`}
-              href={cleanHref(seriesId, {
-                scope,
-                type,
-                mode,
-                cap: c,
-                limit,
-                debug: debugOn ? 1 : undefined,
-              })}
-            >
-              {c}
-            </a>
-          ))}
-        </>
-      )}
-
-      <span className="text-neutral-600 ml-3">Limit:</span>
-      {[50, 100, 200].map((n) => (
-        <a
-          key={n}
-          className={`underline ${limit === n ? "font-semibold" : ""}`}
-          href={cleanHref(seriesId, {
-            scope,
-            type,
-            mode,
-            seasonId,
-            cap,
-            limit: n,
-            debug: debugOn ? 1 : undefined,
-          })}
-        >
-          {n}
-        </a>
-      ))}
-
-      {debugOn ? (
-        <span className="ml-3 text-xs px-2 py-0.5 rounded border">debug</span>
-      ) : null}
-    </div>
-  );
+  // 5. Fetch Festivals
+  const { data: festivals } = await supabase
+    .from("festivals")
+    .select("id, label, start_date, end_date")
+    .eq("series_id", seriesId)
+    .order("start_date", { ascending: true });
 
   return (
-    <div className="space-y-6">
-      {/* Leaderboard */}
-      <section className="card overflow-hidden">
-        <div className="card-header flex flex-wrap items-center justify-between gap-2">
+    <div className="container mx-auto max-w-7xl space-y-10 py-8 px-4">
+      {/* Header with Progress Bar */}
+      <div className="flex flex-col gap-6 border-b border-white/5 pb-8">
+        <div className="flex flex-col md:flex-row items-start justify-between gap-6">
           <div>
-            { /* fallback name if API doesn't provide */ }
-            Series {seriesId} — {type.toUpperCase()} Leaderboard
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`badge ${status.color} font-bold uppercase tracking-widest text-xs`}>{status.label}</span>
+              <span className="text-xs font-bold uppercase tracking-widest text-primary">Tournament Series</span>
+            </div>
+            <h1 className="text-4xl md:text-5xl font-black uppercase italic tracking-tighter text-white">
+              {series?.name || `Series #${seriesId}`}
+            </h1>
           </div>
-          {rightControls}
+          
+          {/* SCOPE TOGGLE (Season vs All-Time) */}
+          <div className="flex items-center gap-2 bg-base-200/50 p-1 rounded-lg border border-white/5">
+             <Link 
+               href={`?scope=season`} 
+               className={`btn btn-sm ${scope === 'season' ? 'btn-primary' : 'btn-ghost'} uppercase font-bold`}
+             >
+               Current Season
+             </Link>
+             <Link 
+               href={`?scope=all_time`} 
+               className={`btn btn-sm ${scope === 'all_time' ? 'btn-secondary' : 'btn-ghost'} uppercase font-bold`}
+             >
+               All-Time
+             </Link>
+          </div>
         </div>
-        <div className="card-body">
-          {!rows.length ? (
-            <div className="text-sm text-neutral-600">No data for this series yet.</div>
-          ) : (
-            <SimpleTable rows={rows} />
-          )}
-          {scope === "all-time" && (
-            <p className="mt-2 text-xs text-neutral-500">
-              Showing <b>Best {cap}</b> results (adjust cap above).
-            </p>
-          )}
+
+        {/* Progress Bar */}
+        <div className="w-full space-y-2">
+          <div className="flex justify-between text-xs font-mono opacity-50 uppercase">
+            <span>Start: {startDate ? new Date(startDate).toLocaleDateString() : 'TBA'}</span>
+            <span>{Math.round(progress)}% Complete</span>
+            <span>End: {endDate ? new Date(endDate).toLocaleDateString() : 'TBA'}</span>
+          </div>
+          <progress className="progress progress-primary w-full h-3" value={progress} max="100"></progress>
         </div>
+      </div>
+
+      {/* "Wall of Champions" */}
+      {recentWinners && recentWinners.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xl">🔥</span>
+            <h3 className="text-lg font-bold uppercase tracking-widest text-white">Latest Champions</h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {recentWinners.map((w: any, i: number) => {
+              // @ts-ignore
+              const pName = w.player?.display_name || `${w.player?.forename} ${w.player?.surname}`;
+              return (
+                <div key={i} className="card bg-gradient-to-br from-base-100 to-base-200 border border-white/10 hover:border-warning/50 transition-all group">
+                  <div className="card-body p-5">
+                    <div className="text-xs font-bold text-warning uppercase tracking-wider mb-1">Winner</div>
+                    <div className="font-black text-lg text-white truncate group-hover:text-warning transition-colors">
+                      {pName}
+                    </div>
+                    <div className="text-xs opacity-60 mt-2 line-clamp-1" title={w.event?.name}>
+                      {w.event?.name}
+                    </div>
+                    <div className="text-xs font-mono opacity-40 mt-1">
+                      {new Date(w.event?.start_date).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Main Stats Grid */}
+      {allRows.length > 0 && (
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatCard label="Most Wins" value={mostWins?.wins || 0} player={mostWins?.display_name} icon="🏆" color="text-warning" />
+          <StatCard label="Most Final Tables" value={mostFts?.final_tables || 0} player={mostFts?.display_name} icon="⚡" color="text-primary" />
+          <StatCard label="Most Cashes" value={mostEvents?.events_played || 0} player={mostEvents?.display_name} icon="💰" color="text-success" />
+        </section>
+      )}
+
+      {/* Leaderboard Table */}
+      <section className="card bg-base-100 shadow-xl border border-white/5 overflow-hidden">
+        <div className="card-header p-6 border-b border-white/5 bg-base-200/20 flex justify-between items-center">
+          <h3 className="text-xl font-bold uppercase tracking-wide">
+            {scope === 'season' ? 'Current Season' : 'All-Time'} Standings
+          </h3>
+          <span className="text-xs font-bold uppercase text-base-content/40 tracking-widest">
+            {totalPlayers} Players
+          </span>
+        </div>
+        
+        <div className="card-body p-0">
+          <div className="overflow-x-auto">
+            {!paginatedRows.length ? (
+              <div className="p-12 text-center text-base-content/50 italic">
+                {scope === 'season' 
+                  ? "No results recorded for the active season yet." 
+                  : "No results recorded for this series yet."}
+              </div>
+            ) : (
+              <table className="table table-lg w-full">
+                <thead>
+                  <tr className="bg-base-200/50 text-xs uppercase text-base-content/60 border-b border-white/5">
+                    <th className="w-20 text-center">Rank</th>
+                    <th>Player</th>
+                    <th className="text-right">Total Pts</th>
+                    <th className="text-right">Events</th>
+                    <th className="text-right hidden sm:table-cell">Wins</th>
+                    <th className="text-right hidden sm:table-cell">FTs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedRows.map((r) => (
+                    <tr key={r.player_id} className={`hover:bg-base-200/30 transition-colors border-b border-base-200/50 last:border-0 ${r.position <= 3 ? 'bg-white/5' : ''}`}>
+                      <td className="text-center">
+                        {r.position === 1 && <div className="text-2xl">🥇</div>}
+                        {r.position === 2 && <div className="text-2xl">🥈</div>}
+                        {r.position === 3 && <div className="text-2xl">🥉</div>}
+                        {r.position > 3 && <span className="font-mono font-bold opacity-50 text-xl italic">{r.position}</span>}
+                      </td>
+                      <td>
+                        <Link className="font-bold text-lg hover:text-primary transition-colors" href={`/players/${encodeURIComponent(r.player_id)}`}>
+                          {r.display_name}
+                        </Link>
+                      </td>
+                      <td className="text-right font-black text-primary text-lg">
+                        {Number(r.total_points).toFixed(2)}
+                      </td>
+                      <td className="text-right font-mono opacity-80">
+                        {r.events_played}
+                      </td>
+                      <td className="text-right font-bold text-warning hidden sm:table-cell">
+                        {r.wins > 0 ? r.wins : '-'}
+                      </td>
+                      <td className="text-right font-mono opacity-60 hidden sm:table-cell">
+                        {r.final_tables > 0 ? r.final_tables : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="card-footer p-4 border-t border-white/5 bg-base-200/20 flex justify-between items-center">
+             <div className="text-xs text-base-content/50">Page {currentPage} of {totalPages}</div>
+             <div className="join">
+                <Link href={`?scope=${scope}&page=${currentPage - 1}`} className={`join-item btn btn-sm ${currentPage <= 1 ? "btn-disabled" : "btn-outline"}`}>« Prev</Link>
+                <Link href={`?scope=${scope}&page=${currentPage + 1}`} className={`join-item btn btn-sm ${currentPage >= totalPages ? "btn-disabled" : "btn-outline"}`}>Next »</Link>
+             </div>
+          </div>
+        )}
       </section>
 
-      {/* Festivals or fallback events */}
-      {festivals.length > 0 ? (
-        <section className="card overflow-hidden">
-          <div className="card-header">Festivals in this series</div>
-          <div className="card-body">
-            <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {festivals.map((f) => (
-                <li key={f.id} className="card p-4">
-                  <div className="font-semibold">
-                    <a
-                      className="underline"
-                      href={`/events/${encodeURIComponent(seriesId)}/${encodeURIComponent(f.id)}`}
-                    >
-                      {f.label}
-                    </a>
+      {/* Festivals List */}
+      {festivals && festivals.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-6 border-l-4 border-primary pl-4">
+             <h3 className="text-2xl font-bold uppercase italic tracking-tight text-white">Festivals</h3>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {festivals.map((f) => (
+              <Link 
+                key={f.id}
+                href={`/events/${encodeURIComponent(params.seriesId)}/${encodeURIComponent(f.id)}`}
+                className="card bg-base-100 shadow-lg border border-white/5 hover:border-primary/50 hover:-translate-y-1 transition-all group"
+              >
+                <div className="card-body">
+                  <div className="flex justify-between">
+                    <div className="text-xs font-bold uppercase tracking-widest text-base-content/40 mb-1">Festival</div>
+                    {getSeriesStatus(f.start_date, f.end_date).label === 'Live Now' && <span className="badge badge-error badge-xs animate-pulse">LIVE</span>}
                   </div>
-                  <div className="text-sm text-neutral-600 mt-1">
-                    {f.start_date ? f.start_date : ""}
-                    {f.end_date ? ` → ${f.end_date}` : ""}
+                  <h4 className="card-title text-lg font-bold group-hover:text-primary transition-colors">{f.label}</h4>
+                  <div className="mt-4 flex items-center justify-between text-xs text-base-content/60 font-mono">
+                    <span>{f.start_date ? new Date(f.start_date).toLocaleDateString() : "TBA"}</span>
+                    <span>→</span>
+                    <span>{f.end_date ? new Date(f.end_date).toLocaleDateString() : "TBA"}</span>
                   </div>
-                  <div className="mt-3 text-sm">
-                    <a
-                      className="underline"
-                      href={`/events/${encodeURIComponent(seriesId)}/${encodeURIComponent(f.id)}`}
-                    >
-                      View events →
-                    </a>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                </div>
+              </Link>
+            ))}
           </div>
         </section>
-      ) : (
-        <section className="card overflow-x-auto">
-          <div className="card-header">Events in this series</div>
-          {!events.length ? (
-            <div className="card-body text-sm text-neutral-600">No events recorded.</div>
-          ) : (
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th className="text-left">Date</th>
-                  <th className="text-left">Event</th>
-                  <th className="text-left">Venue</th>
-                  <th className="text-left">League</th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.map((e) => (
-                  <tr key={e.id}>
-                    <td>{e.date ?? "—"}</td>
-                    <td>
-                      <a className="underline" href={`/events/${encodeURIComponent(e.id)}`}>
-                        {e.name}
-                      </a>
-                    </td>
-                    <td>{e.venue ?? ""}</td>
-                    <td>
-                      <span className={`badge ${e.is_high_roller ? "badge-hrl" : "badge-npl"}`}>
-                        {e.is_high_roller ? "HRL" : "NPL"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
       )}
+    </div>
+  );
+}
 
-      {/* Debug panel */}
-      {debugOn ? (
-        <section className="card p-4">
-          <div className="font-semibold mb-2">Debug</div>
-          <ul className="text-xs space-y-1">
-            {debug.map((d, i) => (
-              <li key={i}>
-                <span className={`inline-block w-28 ${d.ok ? "text-green-500" : "text-red-500"}`}>
-                  {d.ok ? "OK" : "FAIL"}
-                </span>
-                <span className="inline-block w-36 text-neutral-500">{d.kind}</span>
-                <code className="break-all">{d.url}</code>
-                {d.sample ? (
-                  <span className="ml-2 text-neutral-500">keys: {d.sample}</span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <div className="text-sm">
-        <a className="underline" href="/events">
-          ← Back to Events overview
-        </a>
+function StatCard({ label, value, player, icon, color }: { label: string; value: number; player?: string; icon: string; color: string }) {
+  if (!player || value === 0) return null;
+  return (
+    <div className="card bg-base-100 shadow-md border border-white/5 p-4 flex flex-row items-center gap-4">
+      <div className="text-3xl grayscale opacity-80">{icon}</div>
+      <div>
+        <div className="text-xs font-bold uppercase tracking-widest text-base-content/50">{label}</div>
+        <div className={`text-2xl font-black ${color}`}>{value}</div>
+        <div className="text-sm font-bold text-white truncate max-w-[150px]">{player}</div>
       </div>
     </div>
   );

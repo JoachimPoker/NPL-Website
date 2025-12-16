@@ -1,25 +1,47 @@
 import { NextResponse } from "next/server";
-import { createSupabaseRouteClient } from "@/lib/supabaseServer";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
-export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const revalidate = 0; // Disable caching
 
 export async function GET() {
-  const supabase = await createSupabaseRouteClient();
-  const { data, error } = await supabase
-    .from("series")
-    .select("id,label,name,title,is_active,active,enabled,description")
-    .order("label", { ascending: true, nullsFirst: false })
-    .order("name", { ascending: true });
+  try {
+    const cookieStore = await cookies();
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    // Manually create client to ensure it works
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() { return cookieStore.getAll() },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              )
+            } catch { /* ignore set in GET */ }
+          },
+        },
+      }
+    );
 
-  const rows = (data ?? []).map((s: any) => ({
-    id: String(s.id),
-    label: String(s.label ?? s.name ?? s.title ?? "Series"),
-    is_active: Boolean(s.is_active ?? s.active ?? s.enabled ?? true),
-    description: typeof s.description === "string" ? s.description : null,
-  }));
+    // Fetch data
+    const { data, error } = await supabase
+      .from("series")
+      .select("*") // Use * to avoid errors if specific columns like 'slug' are missing
+      .order("name", { ascending: true });
 
-  return NextResponse.json({ ok: true, rows });
+    if (error) {
+      console.error("DB Error /admin/series/list:", error);
+      return NextResponse.json({ ok: false, _error: error.message }, { status: 500 });
+    }
+    
+    return NextResponse.json({ ok: true, series: data });
+
+  } catch (e: any) {
+    console.error("Crash /admin/series/list:", e);
+    return NextResponse.json({ ok: false, _error: e.message }, { status: 500 });
+  }
 }

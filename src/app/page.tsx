@@ -1,367 +1,231 @@
-// src/app/page.tsx
 import Link from "next/link";
 
 export const runtime = "nodejs";
-export const revalidate = 0;
+export const revalidate = 60;
 
-/* ---------- Types that mirror /api/home ---------- */
-type SeasonMeta = {
-  id: number;
-  label: string;
-  start_date: string;
-  end_date: string;
-  method: "ALL" | "BEST_X";
-  cap_x: number;
-  is_active: boolean;
-};
-
+/* ---------- Types ---------- */
 type LbRow = {
   position: number;
-  player_id: string;
+  player_id: string | null;
   display_name: string;
   total_points: number;
-  used_count: number;
-  total_count: number;
-  average_used: number;
-  average_all: number;
-  best_single: number;
-  lowest_counted: number | null;
-  top3_count: number;
-  top9_count: number;
+  events_played: number;
   wins?: number;
+  is_anonymized: boolean;
+  movement: number; // New field: +2, -1, 0, etc.
 };
 
 type HomeResp = {
   ok: true;
-  season_meta: SeasonMeta;
+  season_meta: { id: number; label: string; start_date: string; end_date: string };
   leaderboards: { npl: LbRow[]; hrl: LbRow[] };
-  upcoming_events: Array<{
-    id: string | number;
-    name: string | null;
-    start_date: string | null;
-    festival_id: string | null;
-    series_id: number | null;
-  }>;
+  upcoming_events: Array<{ id: string; name: string; start_date: string }>;
   trending_players: Array<{ player_id: string; hits: number; display_name: string }>;
   biggest_gainers: Array<{ player_id: string; display_name: string; from_pos: number; to_pos: number; delta: number }>;
-  latest_results: Array<{
-    id: string;                 // result id
-    event_id: string | null;
-    result_date: string | null; // event.start_date or created_at
-    event_name: string | null;
-    winner_name: string;
-    prize_amount: number | null;
-  }>;
 };
 
-/* ---------- Small helpers ---------- */
-function fmtNum(v: number | null | undefined) {
-  if (v === null || v === undefined) return "—";
-  return v.toFixed(2);
-}
-function fmtGBP(v: number | null | undefined) {
-  if (v === null || v === undefined) return "—";
-  try {
-    return new Intl.NumberFormat("en-GB", {
-      style: "currency",
-      currency: "GBP",
-      maximumFractionDigits: 0,
-    }).format(v);
-  } catch {
-    return v.toLocaleString("en-GB", { maximumFractionDigits: 0 });
-  }
-}
+/* ---------- Components ---------- */
 
-/* ---------- Reusable UI shells (use your card/tbl classes) ---------- */
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <section className={`card ${className}`}>{children}</section>;
-}
-function CardHeader({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
+function AnnouncementBar() {
   return (
-    <div className="card-header flex items-center justify-between">
-      {children}
-      {right}
+    <div className="w-full bg-base-300 border-b border-base-content/5 py-1.5 overflow-hidden">
+      <div className="mx-auto max-w-7xl px-4 flex items-center justify-between text-xs font-medium uppercase tracking-wide text-base-content/70">
+        <span>📢 Next Event: GUKPT Leeds — Starts Next Thursday</span>
+        <span className="hidden sm:inline">🏆 Rankings Updated Daily</span>
+      </div>
     </div>
   );
 }
-function CardBody({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`card-body ${className}`}>{children}</div>;
+
+function Hero() {
+  return (
+    <div className="relative w-full h-[400px] bg-neutral overflow-hidden">
+      <div className="absolute inset-0 bg-cover bg-right bg-no-repeat opacity-50" style={{ backgroundImage: 'url(/poker-hero.jpg)' }}></div>
+      <div className="absolute inset-0 bg-gradient-to-r from-base-100 via-base-100/90 to-transparent"></div>
+      <div className="relative z-10 mx-auto h-full max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col justify-center">
+        <div className="max-w-xl space-y-6">
+          <h1 className="text-5xl md:text-6xl font-black uppercase italic tracking-tighter text-white leading-[0.9]">
+            The Future <br/> of Poker <span className="text-primary">Is Here.</span>
+          </h1>
+          <p className="text-lg text-base-content/80 font-medium">
+            Join the National Poker League. Track your stats, climb the ranks, and compete for glory.
+          </p>
+          <div className="flex gap-4">
+            <Link href="/signup" className="btn btn-primary btn-lg uppercase font-bold border-none">Join the League</Link>
+            <Link href="/leaderboards" className="btn btn-outline btn-lg uppercase font-bold text-white hover:bg-white hover:text-black">View Standings</Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Helper for Rank Movement Arrows
+function RankMovement({ move }: { move: number }) {
+  if (move > 0) return <span className="text-xs font-bold text-success flex items-center justify-center gap-0.5">▲ {move}</span>;
+  if (move < 0) return <span className="text-xs font-bold text-error flex items-center justify-center gap-0.5">▼ {Math.abs(move)}</span>;
+  return <span className="text-xs font-bold text-base-content/20 flex items-center justify-center">—</span>;
 }
 
 /* ---------- Page ---------- */
 export default async function HomePage() {
-  const base =
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
-
-  const res = await fetch(`${base}/api/home`, { cache: "no-store" });
-  if (!res.ok) {
-    return (
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <h1 className="text-2xl font-semibold">National Poker League</h1>
-          </CardHeader>
-          <CardBody>
-            <div className="p-2 rounded bg-red-100 text-red-700 text-sm">
-              Failed to load homepage data: {res.statusText}
-            </div>
-          </CardBody>
-        </Card>
-      </div>
-    );
-  }
-
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const res = await fetch(`${base}/api/home`, { cache: "no-store" }); 
+  
+  if (!res.ok) return <div className="p-8 text-center">Failed to load data.</div>;
   const data = (await res.json()) as HomeResp;
-  const season = data.season_meta;
+
+  const nplTop = data.leaderboards.npl.slice(0, 18);
+  const bubblePlayers = data.leaderboards.npl.slice(18, 23);
 
   return (
-    <div className="space-y-8">
-      {/* HERO */}
-      <Card>
-        <CardHeader>
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold">National Poker League</h1>
-            <p className="text-sm text-neutral-500">
-              {season.label} • {season.start_date} → {season.end_date} •{" "}
-              {season.method === "BEST_X" ? `Best ${season.cap_x} count` : "All results count"}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link className="rounded-md border px-3 py-1.5 text-sm" href="/leaderboards">
-              View leaderboards →
-            </Link>
-            <Link className="rounded-md border px-3 py-1.5 text-sm" href="/events">
-              Browse events →
-            </Link>
-          </div>
-        </CardHeader>
-      </Card>
+    <div className="flex flex-col min-h-screen">
+      <AnnouncementBar />
+      <Hero />
 
-      {/* MINI LEADERBOARDS */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* NPL */}
-        <Card>
-          <CardHeader right={<Link className="rounded-md border px-3 py-1.5 text-sm" href="/leaderboards?npl=1">Full table →</Link>}>
-            <b>Leaderboard — NPL</b>
-          </CardHeader>
-          <CardBody>
-            {!data.leaderboards.npl.length ? (
-              <div className="text-sm text-neutral-600">No leaderboard yet.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="tbl">
+      <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
+          {/* LEFT COLUMN */}
+          <div className="lg:col-span-8 space-y-8">
+            <div className="card bg-base-100 shadow-xl border border-white/5">
+              <div className="card-header p-6 border-b border-base-200 flex items-center justify-between">
+                <div>
+                   <h3 className="text-xl font-bold uppercase tracking-wide">🏆 Official Leaderboards</h3>
+                   <div className="text-xs opacity-50 uppercase tracking-widest">{data.season_meta.label}</div>
+                </div>
+                <div className="tabs tabs-boxed bg-base-200">
+                  <a className="tab tab-active text-xs font-bold uppercase">NPL</a>
+                </div>
+              </div>
+              
+              <div className="p-0 overflow-x-auto">
+                <table className="table table-lg w-full">
                   <thead>
-                    <tr>
-                      <th>#</th>
-                      <th className="text-left">Player</th>
-                      <th className="text-right">Points</th>
-                      <th className="text-right">Used</th>
-                      <th className="text-right">Top 3</th>
-                      <th className="text-right">Top 9</th>
+                    <tr className="bg-base-200/50 text-xs uppercase text-base-content/60">
+                      <th className="w-20 text-center">Rank</th>
+                      <th>Player</th>
+                      <th className="text-right">Events</th>
                       <th className="text-right">Wins</th>
+                      <th className="text-right">Points</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.leaderboards.npl.slice(0, 10).map((r) => (
-                      <tr key={`${r.player_id}-${r.position}`}>
-                        <td>{r.position}</td>
-                        <td className="truncate" title={r.display_name}>
-                          <Link className="underline" href={`/players/${encodeURIComponent(r.player_id)}`}>
-                            {r.display_name}
-                          </Link>
+                    {nplTop.map((r) => (
+                      <tr key={r.position} className="hover:bg-base-200/30 transition-colors border-b border-base-200/50">
+                        <td className="text-center">
+                          <div className="font-black text-xl italic text-base-content/40">{r.position}</div>
+                          {/* MOVEMENT ARROW */}
+                          <div className="mt-1"><RankMovement move={r.movement} /></div>
                         </td>
-                        <td className="text-right">{fmtNum(r.total_points)}</td>
-                        <td className="text-right">{r.used_count}</td>
-                        <td className="text-right">{r.top3_count}</td>
-                        <td className="text-right">{r.top9_count}</td>
-                        <td className="text-right">{r.wins ?? 0}</td>
+                        <td>
+                          {r.is_anonymized || !r.player_id ? (
+                             <div className="font-bold text-lg text-white/50 italic flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-base-300 flex items-center justify-center text-xs font-bold text-base-content/30">🔒</div>
+                                {r.display_name}
+                             </div>
+                          ) : (
+                             <Link href={`/players/${r.player_id}`} className="font-bold text-lg hover:text-primary transition-colors flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-base-300 flex items-center justify-center text-xs font-bold text-base-content/50">
+                                  {r.display_name.charAt(0)}
+                                </div>
+                                {r.display_name}
+                             </Link>
+                          )}
+                        </td>
+                        <td className="text-right font-mono text-base-content/70">{r.events_played}</td>
+                        <td className="text-right font-mono text-base-content/70">{r.wins ?? 0}</td>
+                        <td className="text-right font-black text-primary text-lg">{Number(r.total_points).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            )}
-          </CardBody>
-        </Card>
-
-        {/* HR League */}
-        <Card>
-          <CardHeader right={<Link className="rounded-md border px-3 py-1.5 text-sm" href="/leaderboards?league=hrl">Full table →</Link>}>
-            <b>Leaderboard — High Roller League</b>
-          </CardHeader>
-          <CardBody>
-            {!data.leaderboards.hrl.length ? (
-              <div className="text-sm text-neutral-600">No leaderboard yet.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th className="text-left">Player</th>
-                      <th className="text-right">Points</th>
-                      <th className="text-right">Used</th>
-                      <th className="text-right">Top 3</th>
-                      <th className="text-right">Top 9</th>
-                      <th className="text-right">Wins</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.leaderboards.hrl.slice(0, 10).map((r) => (
-                      <tr key={`${r.player_id}-${r.position}`}>
-                        <td>{r.position}</td>
-                        <td className="truncate" title={r.display_name}>
-                          <Link className="underline" href={`/players/${encodeURIComponent(r.player_id)}`}>
-                            {r.display_name}
-                          </Link>
-                        </td>
-                        <td className="text-right">{fmtNum(r.total_points)}</td>
-                        <td className="text-right">{r.used_count}</td>
-                        <td className="text-right">{r.top3_count}</td>
-                        <td className="text-right">{r.top9_count}</td>
-                        <td className="text-right">{r.wins ?? 0}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="p-4 border-t border-base-200 text-center">
+                <Link href="/leaderboards" className="btn btn-ghost btn-sm uppercase text-xs tracking-widest">
+                  View Full Leaderboard →
+                </Link>
               </div>
-            )}
-          </CardBody>
-        </Card>
-      </div>
+            </div>
+          </div>
 
-      {/* TRENDING + GAINERS */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Trending players */}
-        <Card>
-          <CardHeader>
-            <b>Trending Players</b>
-          </CardHeader>
-          <CardBody>
-            {!data.trending_players.length ? (
-              <div className="text-sm text-neutral-600">No data yet.</div>
-            ) : (
-              <ul className="divide-y divide-neutral-800">
-                {data.trending_players.slice(0, 10).map((p) => (
-                  <li key={p.player_id} className="flex items-center justify-between py-2">
-                    <Link className="underline" href={`/players/${encodeURIComponent(p.player_id)}`}>
-                      {p.display_name}
+          {/* RIGHT COLUMN */}
+          <div className="lg:col-span-4 space-y-6">
+            
+            {/* Trending Players */}
+            <div className="card bg-base-100 shadow-lg border border-white/5 p-5">
+              <h4 className="text-sm font-bold uppercase tracking-widest text-base-content/50 mb-4 flex items-center gap-2">
+                🔥 Trending Players
+              </h4>
+              <ul className="space-y-3">
+                {data.trending_players.slice(0, 5).map((p, i) => (
+                  <li key={p.player_id} className="flex items-center justify-between group cursor-pointer">
+                    <Link href={`/players/${p.player_id}`} className="flex items-center gap-3">
+                      <span className="text-lg font-black text-base-content/20 group-hover:text-primary transition-colors">0{i+1}</span>
+                      <span className="font-semibold group-hover:text-primary transition-colors">{p.display_name}</span>
                     </Link>
-                    <span className="text-xs text-neutral-500">{p.hits} searches</span>
                   </li>
                 ))}
               </ul>
-            )}
-          </CardBody>
-        </Card>
-
-        {/* Biggest gainers */}
-        <Card>
-          <CardHeader>
-            <b>Biggest Gainers</b>
-          </CardHeader>
-          <CardBody>
-            {!data.biggest_gainers.length ? (
-              <div className="text-sm text-neutral-600">No recent changes.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th className="text-left">Player</th>
-                      <th className="text-right">From</th>
-                      <th className="text-right">To</th>
-                      <th className="text-right">Δ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.biggest_gainers.slice(0, 10).map((g) => (
-                      <tr key={g.player_id}>
-                        <td className="truncate" title={g.display_name}>
-                          <Link className="underline" href={`/players/${encodeURIComponent(g.player_id)}`}>
-                            {g.display_name}
-                          </Link>
-                        </td>
-                        <td className="text-right">{g.from_pos}</td>
-                        <td className="text-right">{g.to_pos}</td>
-                        <td className="text-right">{g.delta > 0 ? `+${g.delta}` : g.delta}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardBody>
-        </Card>
-      </div>
-
-      {/* LATEST RESULTS — winners only, new style */}
-      <Card className="overflow-hidden">
-        <CardHeader right={<Link className="rounded-md border px-3 py-1.5 text-sm" href="/events">All events →</Link>}>
-          <b>Latest Results</b>
-        </CardHeader>
-        <CardBody>
-          {!data.latest_results.length ? (
-            <div className="text-sm text-neutral-600">No recent results.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th className="text-left">Date</th>
-                    <th className="text-left">Event</th>
-                    <th className="text-left">Winner</th>
-                    <th className="text-right">Prize</th>
-                    <th className="text-left">View</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.latest_results.map((r) => (
-                    <tr key={r.id}>
-                      <td>{r.result_date ?? "—"}</td>
-                      <td>{r.event_name ?? "—"}</td>
-                      <td>{r.winner_name}</td>
-                      <td className="text-right">{fmtGBP(r.prize_amount)}</td>
-                      <td>
-                        <Link className="underline" href={`/#/result/${encodeURIComponent(r.id)}`}>
-                          View
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
-          )}
-        </CardBody>
-      </Card>
 
-      {/* UPCOMING EVENTS */}
-      <Card>
-        <CardHeader right={<Link className="rounded-md border px-3 py-1.5 text-sm" href="/events">See calendar →</Link>}>
-          <b>Upcoming Events</b>
-        </CardHeader>
-        <CardBody>
-          {!data.upcoming_events.length ? (
-            <div className="text-sm text-neutral-600">No upcoming events.</div>
-          ) : (
-            <ul className="divide-y divide-neutral-800">
-              {data.upcoming_events.map((e) => (
-                <li key={String(e.id)} className="py-2 flex items-center justify-between">
-                  <div className="truncate">
-                    <div className="text-sm font-medium truncate">{e.name || "—"}</div>
-                    <div className="text-xs text-neutral-500">{e.start_date || "TBA"}</div>
-                  </div>
-                  <Link className="rounded-md border px-2 py-1 text-sm" href={`/events/${encodeURIComponent(String(e.id))}`}>
-                    View
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardBody>
-      </Card>
+            {/* RESTORED: Biggest Gainers */}
+            <div className="card bg-base-100 shadow-lg border border-white/5 p-5">
+              <h4 className="text-sm font-bold uppercase tracking-widest text-base-content/50 mb-4 flex items-center gap-2">
+                🚀 Biggest Movers (Week)
+              </h4>
+              <ul className="space-y-3">
+                {data.biggest_gainers.length === 0 ? (
+                  <div className="text-sm text-base-content/40 italic">No movement recorded yet.</div>
+                ) : (
+                  data.biggest_gainers.slice(0, 5).map((g) => (
+                    <li key={g.player_id} className="flex items-center justify-between">
+                      <Link href={`/players/${g.player_id}`} className="font-semibold hover:text-primary truncate max-w-[150px]">
+                        {g.display_name}
+                      </Link>
+                      <div className="flex items-center gap-2">
+                         {/* Show rank change: e.g. #25 -> #20 */}
+                        <span className="text-xs text-base-content/40">#{g.from_pos} → #{g.to_pos}</span>
+                        <span className="badge badge-success badge-sm font-bold text-white">+{g.delta}</span>
+                      </div>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+
+            {/* Bubble Watch */}
+            <div className="card bg-warning/10 shadow-lg border border-warning/20 p-5">
+              <h4 className="text-sm font-bold uppercase tracking-widest text-warning mb-4 flex items-center gap-2">
+                ⚠️ The Bubble Watch
+              </h4>
+              <p className="text-xs text-base-content/60 mb-4">
+                Players ranked 19-23, fighting to break into the Top 18 prize zone.
+              </p>
+              <ul className="space-y-2">
+                {bubblePlayers.length === 0 ? (
+                  <div className="text-sm opacity-50">Not enough data yet.</div>
+                ) : (
+                  bubblePlayers.map((p) => (
+                    <li key={p.position} className="flex justify-between items-center text-sm border-b border-warning/10 pb-1 last:border-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-warning font-bold w-6">#{p.position}</span>
+                         {p.is_anonymized ? (
+                            <span className="opacity-60 italic">{p.display_name}</span>
+                         ) : (
+                            <Link href={`/players/${p.player_id}`} className="hover:text-warning transition-colors">{p.display_name}</Link>
+                         )}
+                      </div>
+                      <span className="font-mono opacity-60">{Number(p.total_points).toFixed(1)}</span>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

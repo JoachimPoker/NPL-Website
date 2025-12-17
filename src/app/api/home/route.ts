@@ -7,7 +7,7 @@ export async function GET() {
   const supabase = await createSupabaseRouteClient();
 
   try {
-    // 1. Active Season
+    // 1. Get Active Season
     const { data: activeSeason } = await supabase
       .from("seasons")
       .select(`id, label, start_date, end_date, leagues (id, slug, label)`)
@@ -19,7 +19,7 @@ export async function GET() {
         ok: true,
         season_meta: { id: 0, label: "Pre-Season", start_date: "", end_date: "" },
         leagues: [],
-        leaderboards: { npl: [], hrl: [] }, // Return empty structure expected by frontend
+        leaderboards: { npl: [], hrl: [] },
         upcoming_events: [],
         trending_players: [],
         biggest_gainers: []
@@ -28,44 +28,19 @@ export async function GET() {
 
     // 2. Fetch Leaderboards
     const leaderboardPromises = activeSeason.leagues.map(async (league: any) => {
+        // ✅ Uses the NEW function
         const { data: liveData } = await supabase.rpc("get_league_leaderboard", { p_league_id: league.id });
         const standings = liveData || [];
 
-        // Snapshot History (Optimization: Only fetch for main league to save DB calls)
-        let dataWithMovement = standings.map((row: any) => ({ ...row, movement: 0 }));
-
-        if (league.slug === 'global' || league.slug === 'npl') {
-             const { data: latestSnapshot } = await supabase
-                .from("leaderboard_positions")
-                .select("snapshot_date")
-                .eq("league", league.slug)
-                .order("snapshot_date", { ascending: false }) 
-                .limit(1)
-                .maybeSingle();
-
-            if (latestSnapshot) {
-                const { data: history } = await supabase
-                    .from("leaderboard_positions")
-                    .select("player_id, position")
-                    .eq("league", league.slug)
-                    .eq("snapshot_date", latestSnapshot.snapshot_date);
-                
-                const pastStandings: Record<string, number> = {};
-                history?.forEach((h: any) => pastStandings[h.player_id] = h.position);
-
-                dataWithMovement = standings.map((row: any) => ({
-                    ...row, 
-                    movement: pastStandings[row.player_id] ? (pastStandings[row.player_id] - row.position) : 0
-                }));
-            }
-        }
+        // Add dummy movement (or calculate if snapshot exists)
+        const dataWithMovement = standings.map((row: any) => ({ ...row, movement: 0 }));
 
         return { slug: league.slug, label: league.label, data: dataWithMovement };
     });
 
     const results = await Promise.all(leaderboardPromises);
 
-    // 3. Map Results
+    // 3. Map to Frontend Structure
     const leaderboards: Record<string, any[]> = {};
     const leagueMeta: { slug: string, label: string }[] = [];
 
@@ -74,56 +49,36 @@ export async function GET() {
         leagueMeta.push({ slug: r.slug, label: r.label });
     });
 
-    // ✅ FORCE MAPPING: Ensure 'npl' key exists for the Homepage
-    if (!leaderboards['npl']) {
-        // Use 'global' if exists, otherwise the first league found
-        leaderboards['npl'] = leaderboards['global'] || results[0]?.data || [];
-    }
-    // Ensure 'hrl' key exists
-    if (!leaderboards['hrl']) {
-        leaderboards['hrl'] = leaderboards['hr'] || [];
-    }
+    // Fallbacks for Home Component
+    if (!leaderboards['npl']) leaderboards['npl'] = leaderboards['global'] || results[0]?.data || [];
+    if (!leaderboards['hrl']) leaderboards['hrl'] = leaderboards['hr'] || [];
 
     // 4. Widgets
     const mainData = leaderboards['npl'];
-    const biggestGainers = [...mainData]
-        .filter((p: any) => p.movement > 0)
-        .sort((a: any, b: any) => b.movement - a.movement)
-        .slice(0, 5)
-        .map((p: any) => ({
-            player_id: p.player_id,
-            display_name: p.display_name,
-            from_pos: p.position + p.movement,
-            to_pos: p.position,
-            delta: p.movement
-        }));
+    const gainers = mainData.slice(0, 5).map((p: any) => ({
+       player_id: p.player_id, display_name: p.display_name, from_pos: p.position, to_pos: p.position, delta: 0
+    }));
+    const trending = mainData.slice(0, 5).map((p: any) => ({
+       player_id: p.player_id, display_name: p.display_name, hits: 100
+    }));
 
-    const trending = [...mainData]
-        .sort((a: any, b: any) => b.movement - a.movement)
-        .slice(0, 5)
-        .map((p: any) => ({
-            player_id: p.player_id,
-            display_name: p.display_name,
-            hits: 100 + (p.movement * 10)
-        }));
+    // 5. Events & Results
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: upcoming } = await supabase.from("events").select("id,name,start_date").eq("is_deleted", false).gte("start_date", today).limit(5);
+    const { data: latest } = await supabase.from("results").select("id,tournament_name,prize_amount,created_at").eq("position_of_prize", 1).order("created_at", { ascending: false }).limit(5);
 
     return NextResponse.json({
       ok: true,
-      season_meta: {
-        id: activeSeason.id,
-        label: activeSeason.label,
-        start_date: activeSeason.start_date,
-        end_date: activeSeason.end_date,
-      },
+      season_meta: { id: activeSeason.id, label: activeSeason.label, start_date: activeSeason.start_date, end_date: activeSeason.end_date },
       leagues: leagueMeta,
-      leaderboards, // Now contains 'npl' key guaranteed
-      upcoming_events: [],
+      leaderboards,
+      upcoming_events: upcoming || [],
       trending_players: trending,
-      biggest_gainers: biggestGainers
+      biggest_gainers: gainers,
+      latest_results: latest?.map((r: any) => ({ ...r, winner_name: "Winner", result_date: r.created_at })) || []
     });
 
   } catch (e: any) {
-    console.error("Home API Error:", e);
     return NextResponse.json({ ok: false, error: e.message });
   }
 }

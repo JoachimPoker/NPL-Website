@@ -8,49 +8,40 @@ export async function GET(req: Request) {
   try {
     const supabase = await createSupabaseRouteClient();
     const url = new URL(req.url);
-    const slug = url.searchParams.get("league") || "global"; // Default to 'global'
+    const slug = url.searchParams.get("league") || "global"; 
 
-    // 1. Find the League ID based on the slug
-    // We join with seasons to ensure we only get the ACTIVE season's league
-    const { data: leagueData, error: leagueError } = await supabase
+    // 1. Find League ID (with Fallback)
+    let { data: leagueData } = await supabase
         .from("leagues")
-        .select("id, label, seasons!inner(is_active)")
+        .select("id, label, slug")
         .eq("slug", slug)
-        .eq("seasons.is_active", true)
         .single();
 
-    if (leagueError || !leagueData) {
-        return NextResponse.json({ ok: false, error: "League not found in active season" }, { status: 404 });
+    if (!leagueData) {
+        // Fallback: Get first active league
+        const { data: fallback } = await supabase
+            .from("leagues")
+            .select("id, label, slug")
+            .limit(1)
+            .maybeSingle();
+        
+        if (fallback) return NextResponse.redirect(new URL(`?league=${fallback.slug}`, req.url));
+        return NextResponse.json({ ok: false, error: "No leagues found" }, { status: 404 });
     }
 
-    // 2. Use the central SQL function (Same as Home Page)
-    const { data: rows, error: rpcError } = await supabase
-        .rpc("get_league_leaderboard", { p_league_id: leagueData.id });
+    // 2. ✅ Call NEW Function
+    const { data: rows, error } = await supabase.rpc("get_league_leaderboard", { p_league_id: leagueData.id });
 
-    if (rpcError) throw rpcError;
+    if (error) throw error;
 
-    // 3. Pagination (Done in JS for simplicity, as list is usually < 5000)
-    const limit = Number(url.searchParams.get("limit") || 100);
-    const offset = Number(url.searchParams.get("offset") || 0);
+    // 3. Simple Search/Pagination
     const search = (url.searchParams.get("search") || "").toLowerCase();
-
-    let filtered = rows || [];
-    if (search) {
-        filtered = filtered.filter((r: any) => r.display_name.toLowerCase().includes(search));
-    }
-
-    const paginated = filtered.slice(offset, offset + limit);
-
+    let filtered = (rows || []).filter((r: any) => !search || r.display_name.toLowerCase().includes(search));
+    
     return NextResponse.json({
       ok: true,
-      meta: {
-        league: slug,
-        label: leagueData.label,
-        total: filtered.length,
-        limit,
-        offset
-      },
-      rows: paginated,
+      meta: { league: leagueData.slug, label: leagueData.label, total: filtered.length },
+      rows: filtered.slice(0, 100),
     });
 
   } catch (e: any) {

@@ -1,9 +1,11 @@
-// src/app/api/admin/import-excel/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+// ✅ IMPORT THE HELPER
+import { takeLeaderboardSnapshot } from "@/lib/leaderboardUtils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,7 +89,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Upload one or more .xlsx files as 'files' (or 'file')." }, { status: 400 });
     }
 
-    // Import batch (fields casted as any so missing columns won't break)
+    // Import batch
     const filenames = files.map((f) => (f as any).name || "upload.xlsx").join(", ");
     const { data: batch } = await supabase
       .from("import_batches")
@@ -107,13 +109,12 @@ export async function POST(req: NextRequest) {
 
       const tpRows = XLSX.utils.sheet_to_json<RowTP>(tpSheet, { defval: null });
 
-      /* ----------- Build sets in memory (NO per-row calls) ----------- */
       const eventsMap = new Map<
         string,
         { id: string; name: string | null; start_date: string | null; buy_in_raw: string | null; site_name: string | null }
       >();
       const playersMap = new Map<string, { id: string; forename: string | null; surname: string | null; display_name: string | null }>();
-      const aliasesSet = new Set<string>(); // key: playerId|lower(fullname)
+      const aliasesSet = new Set<string>();
       const resultsRows: any[] = [];
 
       for (const r of tpRows) {
@@ -139,7 +140,6 @@ export async function POST(req: NextRequest) {
           tournamentsTouched.add(tournamentId);
         }
         if (playerId) {
-          // keep the latest name we see
           playersMap.set(playerId, {
             id: playerId,
             forename: forename || null,
@@ -166,24 +166,23 @@ export async function POST(req: NextRequest) {
           });
         }
       }
-      /* ---------------------------------------------------------------- */
 
-      /* Upsert events (chunked) */
+      /* Upsert events */
       const eventArr = Array.from(eventsMap.values());
       totalEventsUpserted += eventArr.length;
       for (const slice of chunk(eventArr, 2000)) {
         const payload = slice.map((e) => ({
           id: e.id,
           name: e.name,
-          start_date: e.start_date, // DATE 'YYYY-MM-DD'
-          buy_in_raw: e.buy_in_raw, // TEXT
-          site_name: e.site_name,   // TEXT
+          start_date: e.start_date,
+          buy_in_raw: e.buy_in_raw,
+          site_name: e.site_name,
         }));
         const { error: evErr } = await supabase.from("events").upsert(payload as any, { onConflict: "id" });
         if (evErr) throw new Error(`Events upsert failed: ${evErr.message}`);
       }
 
-      /* Delete old results for these tournaments (idempotent) */
+      /* Delete old results */
       if (tournamentsTouched.size) {
         for (const slice of chunk(Array.from(tournamentsTouched), 2000)) {
           const { error: delErr } = await supabase.from("results").delete().in("event_id", slice);
@@ -203,17 +202,15 @@ export async function POST(req: NextRequest) {
         if (pErr) throw new Error(`Players upsert failed: ${pErr.message}`);
       }
 
-      /* Bulk insert aliases (ignore duplicates via unique index) */
+      /* Bulk insert aliases */
       if (aliasesSet.size) {
         const aliasRows = Array.from(aliasesSet).map((key) => {
           const [player_id, aliasLower] = key.split("|");
-          return { player_id, alias: aliasLower }; // store lower; or store original if you prefer
+          return { player_id, alias: aliasLower };
         });
-        // If you prefer to store the original case, keep a second map; using lower keeps it normalized.
         for (const slice of chunk(aliasRows, 2000)) {
           const { error: aErr } = await supabase
             .from("player_aliases")
-            // upsert works only if you have a real PK; for unique index use insert + ignore duplicates on server
             .upsert(slice as any, { onConflict: "player_id,alias" });
           if (aErr) throw new Error(`Aliases insert failed: ${aErr.message}`);
         }
@@ -233,10 +230,10 @@ export async function POST(req: NextRequest) {
       .update({ status: "normalized", processed_count: totalInserted } as any)
       .eq("id", batch?.id);
 
-    // ⬇️ NEW: Auto-trigger the leaderboard snapshot ⬇️
-    // We swallow errors here so a snapshot failure doesn't report the whole import as failed
+    // ✅ EXECUTE SNAPSHOT (Using the new helper)
+    // This will populate 'leaderboard_positions' so Home Page arrows work
     try {
-      await supabase.rpc("take_weekly_leaderboard_snapshot");
+      await takeLeaderboardSnapshot(supabase);
     } catch (snapErr) {
       console.error("Auto-snapshot failed:", snapErr);
     }

@@ -2,26 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseRouteClient } from "@/lib/supabaseServer";
 
 export async function POST(req: NextRequest) {
+  const supabase = await createSupabaseRouteClient();
+  
   try {
     const body = await req.json();
-    const { event_ids, updates } = body;
+    const { updates } = body; // Array of { id, is_high_roller, series_id }
 
-    if (!event_ids || !Array.isArray(event_ids) || event_ids.length === 0) {
-      return NextResponse.json({ ok: false, error: "No events selected" }, { status: 400 });
+    if (!updates || !Array.isArray(updates)) {
+      return NextResponse.json({ error: "Invalid data" }, { status: 400 });
     }
 
-    const supabase = await createSupabaseRouteClient();
-
-    // Perform the update on all selected IDs
-    const { error } = await supabase
-      .from("events")
-      .update(updates) // e.g. { is_high_roller: true }
-      .in("id", event_ids);
-
-    if (error) throw error;
+    // Process updates
+    for (const up of updates) {
+      await supabase
+        .from("events")
+        .update({ 
+          is_high_roller: up.is_high_roller,
+          series_id: up.series_id || null
+        })
+        .eq("id", up.id);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
+    return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

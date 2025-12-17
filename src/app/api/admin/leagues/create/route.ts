@@ -6,7 +6,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { 
       season_id, label, slug, scoring_method, scoring_cap, 
-      filter_is_high_roller, bonus_b2b, bonus_over_cap 
+      filter_is_high_roller, max_buy_in, // ✅ Added max_buy_in
+      bonus_b2b, bonus_over_cap 
     } = body;
 
     const supabase = await createSupabaseRouteClient();
@@ -20,7 +21,8 @@ export async function POST(req: NextRequest) {
         slug: slug.toLowerCase().replace(/[^a-z0-9]/g, '-'),
         scoring_method,
         scoring_cap: Number(scoring_cap || 0),
-        filter_is_high_roller: filter_is_high_roller === "all" ? null : filter_is_high_roller === "true"
+        filter_is_high_roller, // Passed directly (true/null)
+        max_buy_in: max_buy_in ? Number(max_buy_in) : null // ✅ Added
       })
       .select()
       .single();

@@ -1,14 +1,14 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Takes a snapshot of the current active Global Leaderboard.
- * Call this immediately after importing new results.
+ * Takes a snapshot of ALL active leaderboards.
+ * @param dateOverride Optional YYYY-MM-DD date to force this snapshot to a specific point in time.
  */
-export async function takeLeaderboardSnapshot(supabase: SupabaseClient) {
+export async function takeLeaderboardSnapshot(supabase: SupabaseClient, dateOverride?: string) {
   try {
-    console.log("📸 Starting Leaderboard Snapshot...");
+    console.log(`📸 Starting Leaderboard Snapshot... (Date: ${dateOverride || "Today"})`);
 
-    // 1. Get Active Season & Global League
+    // 1. Get Active Season & ALL Leagues
     const { data: activeSeason } = await supabase
       .from("seasons")
       .select(`leagues (id, slug)`)
@@ -20,48 +20,48 @@ export async function takeLeaderboardSnapshot(supabase: SupabaseClient) {
       return;
     }
 
-    // Find Global League (fallback to first if 'global' not found)
-    const globalLeague = activeSeason.leagues.find((l: any) => l.slug === 'global') || activeSeason.leagues[0];
+    // Use override date if provided, otherwise today's date
+    const snapshotDate = dateOverride || new Date().toISOString().split('T')[0];
+    let totalSaved = 0;
 
-    // 2. Calculate Current Standings using the DB function
-    const { data: liveData, error } = await supabase.rpc("get_league_leaderboard", { 
-      p_league_id: globalLeague.id 
-    });
+    // 2. Loop through EVERY league (Global, HR, Low, etc.)
+    for (const league of activeSeason.leagues) {
+        // A. Calculate Current Standings
+        const { data: liveData, error } = await supabase.rpc("get_league_leaderboard", { 
+            p_league_id: league.id 
+        });
 
-    if (error) {
-      console.error("❌ Snapshot Error fetching live data:", error);
-      return;
+        if (error) {
+            console.error(`❌ Error fetching data for league ${league.slug}:`, error);
+            continue;
+        }
+        
+        if (!liveData || liveData.length === 0) continue;
+
+        // B. Clean up existing snapshot for THIS DATE (allows re-running imports without duplicates)
+        await supabase.from("leaderboard_positions")
+            .delete()
+            .eq("league", league.slug)
+            .eq("snapshot_date", snapshotDate);
+
+        // C. Prepare Rows
+        const rows = liveData.map((p: any) => ({
+            player_id: p.player_id, 
+            league: league.slug,
+            position: p.position,
+            points: p.total_points,
+            snapshot_date: snapshotDate // <--- Uses the custom date
+        })).filter((r: any) => r.player_id !== null);
+
+        // D. Save to DB
+        if (rows.length > 0) {
+            const { error: insertError } = await supabase.from("leaderboard_positions").insert(rows);
+            if (insertError) console.error(`❌ Insert Error (${league.slug}):`, insertError);
+            else totalSaved += rows.length;
+        }
     }
-    
-    if (!liveData || liveData.length === 0) {
-      console.log("⚠️ Snapshot skipped: No live results found.");
-      return;
-    }
 
-    // 3. Prepare Snapshot Rows
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    
-    // Clean up any existing snapshot for TODAY (allows re-running imports)
-    await supabase.from("leaderboard_positions")
-      .delete()
-      .eq("league", globalLeague.slug)
-      .eq("snapshot_date", today);
-
-    // 4. Save to History
-    // We filter out null player_ids (anonymous players aren't tracked for history)
-    const rows = liveData.map((p: any) => ({
-      player_id: p.player_id, 
-      league: globalLeague.slug,
-      position: p.position,
-      points: p.total_points,
-      snapshot_date: today
-    })).filter((r: any) => r.player_id !== null);
-
-    if (rows.length > 0) {
-      const { error: insertError } = await supabase.from("leaderboard_positions").insert(rows);
-      if (insertError) console.error("❌ Snapshot Insert Error:", insertError);
-      else console.log(`✅ Snapshot saved: ${rows.length} players tracked.`);
-    }
+    console.log(`✅ Snapshot complete for ${snapshotDate}. Tracked ${totalSaved} positions.`);
 
   } catch (e) {
     console.error("❌ Snapshot failed:", e);

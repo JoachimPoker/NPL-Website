@@ -1,16 +1,12 @@
-// src/app/players/[id]/page.tsx
 import Link from "next/link";
 import { getPlayerProfile } from "@/lib/data";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import PlayerPointsChart from "@/components/PlayerPointsChart";
 
 const PLACEHOLDER_AVATAR_URL = "/avatar-default.svg";
 
 export const runtime = "nodejs";
 export const revalidate = 60;
-
-type PlayerPageProps = {
-  params: Promise<{ id: string }>;
-};
 
 export default async function PlayerProfile(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -20,9 +16,7 @@ export default async function PlayerProfile(props: { params: Promise<{ id: strin
   const supabase = await createSupabaseServerClient();
   try {
     await supabase.from("player_searches").insert({ player_id: id });
-  } catch (e) {
-    console.error("Tracking error:", e);
-  }
+  } catch (e) { /* ignore */ }
 
   // 2. FETCH DATA
   const data = await getPlayerProfile(id);
@@ -36,150 +30,198 @@ export default async function PlayerProfile(props: { params: Promise<{ id: strin
     );
   }
 
-  const p = data.player;
-  const recent = data.recent_results;
-
-  // Stats Logic (Same as before)
-  const totalResults = recent.length;
-  const totalPointsRecent = recent.reduce((sum, r) => sum + (Number(r.points) || 0), 0);
-  const avgPointsRecent = totalResults ? totalPointsRecent / totalResults : 0;
-  const cashes = recent.filter((r) => r.prize_amount !== null && Number(r.prize_amount) > 0);
-  const cashesCount = cashes.length;
-  const totalPrize = recent.reduce((sum, r) => sum + (Number(r.prize_amount) || 0), 0);
-  const lifetimePoints = Number(data.stats.lifetime_points ?? 0);
-  const biggestCash = cashes.reduce((max, r) => Math.max(max, Number(r.prize_amount) || 0), 0);
-  const bestFinish = recent.reduce((best, r) => {
-    if (typeof r.position_of_prize === "number") {
-      return best === null ? r.position_of_prize : Math.min(best, r.position_of_prize);
-    }
-    return best;
-  }, null as number | null);
-
-  const achievementBadges = ["GUKPT Winner", "NPL Winner", "25/50 Winner"]; // Placeholders
+  const { player: p, stats, recent_results, graph_data } = data;
 
   return (
-    <div className="container mx-auto max-w-7xl space-y-8 py-8 px-4">
-      {/* 1. Identity Card */}
-      <section className="card bg-base-100 shadow-xl border border-white/5 overflow-hidden">
-        {/* Background gradient splash */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
-        
-        <div className="card-body flex flex-col md:flex-row items-center md:items-start gap-8 relative z-10">
-          {/* Avatar "Poker Chip" Style */}
-          <div className="avatar">
-            <div className="w-32 rounded-full ring-4 ring-base-100 shadow-2xl bg-base-300 p-1">
-              <div className="w-full h-full rounded-full overflow-hidden bg-neutral flex items-center justify-center">
+    <div className="min-h-screen bg-base-200/50 pb-12">
+      
+      {/* --- HEADER SECTION --- */}
+      <div className="bg-base-100 border-b border-white/5">
+        <div className="container mx-auto max-w-7xl px-4 py-8 md:py-12">
+          <div className="flex flex-col md:flex-row items-center md:items-end gap-8">
+            
+            {/* AVATAR */}
+            <div className="relative">
+              <div className="w-32 h-32 md:w-40 md:h-40 rounded-xl overflow-hidden ring-4 ring-base-100 shadow-2xl bg-base-300">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img 
                   src={p.avatar_url || PLACEHOLDER_AVATAR_URL} 
-                  alt={p.name ?? ""} 
+                  alt={p.name} 
                   className="w-full h-full object-cover"
                 />
+              </div>
+              {stats.current_rank && stats.current_rank <= 3 && (
+                <div className="absolute -top-4 -right-4 w-12 h-12 bg-primary text-primary-content rounded-full flex items-center justify-center font-black text-xl shadow-lg border-4 border-base-100">
+                  #{stats.current_rank}
+                </div>
+              )}
+            </div>
+
+            {/* IDENTITY */}
+            <div className="flex-1 text-center md:text-left space-y-1">
+              <div className="text-xs font-bold uppercase tracking-widest text-primary mb-1">
+                National Poker League
+              </div>
+              <h1 className="text-4xl md:text-6xl font-black uppercase italic tracking-tighter text-white leading-none">
+                {p.name}
+              </h1>
+              <div className="flex flex-wrap justify-center md:justify-start gap-3 pt-3">
+                {stats.current_rank ? (
+                  <div className="badge badge-lg badge-neutral border-primary/20 text-primary font-bold uppercase text-xs tracking-wider">
+                    Rank #{stats.current_rank}
+                  </div>
+                ) : (
+                  <div className="badge badge-lg badge-ghost opacity-50 font-bold uppercase text-xs tracking-wider">
+                    Unranked
+                  </div>
+                )}
+                {p.consent && (
+                  <div className="badge badge-lg badge-ghost border-white/10 font-bold uppercase text-xs tracking-wider gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-success"></span> Verified Profile
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* KEY METRICS (Desktop) */}
+            <div className="hidden md:flex gap-8 text-right">
+              <div>
+                <div className="text-[10px] font-bold uppercase text-base-content/40 tracking-widest">Total Points</div>
+                <div className="text-3xl font-black text-primary">{stats.lifetime_points.toFixed(0)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase text-base-content/40 tracking-widest">Winnings</div>
+                <div className="text-3xl font-black text-white">£{stats.total_earnings.toLocaleString()}</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      {/* --- MAIN CONTENT --- */}
+      <div className="container mx-auto max-w-7xl px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* LEFT COLUMN: Stats & Graph */}
+        <div className="lg:col-span-2 space-y-8">
+          
+          {/* Mobile Metrics (Visible only on small screens) */}
+          <div className="grid grid-cols-2 gap-4 md:hidden">
+            <div className="card bg-base-100 p-4 border border-white/5 text-center">
+               <div className="text-[10px] font-bold uppercase text-base-content/40 tracking-widest">Points</div>
+               <div className="text-2xl font-black text-primary">{stats.lifetime_points.toFixed(0)}</div>
+            </div>
+            <div className="card bg-base-100 p-4 border border-white/5 text-center">
+               <div className="text-[10px] font-bold uppercase text-base-content/40 tracking-widest">Winnings</div>
+               <div className="text-2xl font-black text-white">£{stats.total_earnings.toLocaleString()}</div>
+            </div>
+          </div>
+
+          {/* Performance Graph */}
+          <div className="card bg-base-100 shadow-xl border border-white/5">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center">
+              <h3 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                📈 Season Trajectory
+              </h3>
+            </div>
+            <div className="p-6">
+              <PlayerPointsChart data={graph_data} />
+            </div>
+          </div>
+
+          {/* Recent Results */}
+          <div className="card bg-base-100 shadow-xl border border-white/5 overflow-hidden">
+            <div className="p-6 border-b border-white/5 flex justify-between items-end">
+              <div>
+                <h3 className="text-lg font-bold uppercase tracking-wide text-white">Recent Cashes</h3>
+                <p className="text-xs text-base-content/50 mt-1">Performance in last 50 events</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="table table-sm w-full">
+                <thead>
+                  <tr className="bg-base-200/50 text-[10px] uppercase text-base-content/60 border-b border-white/5">
+                    <th className="py-3 pl-6">Date</th>
+                    <th className="py-3">Event</th>
+                    <th className="py-3 text-right">Pos</th>
+                    <th className="py-3 text-right">Points</th>
+                    <th className="py-3 text-right pr-6">Prize</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recent_results.map((r) => {
+                    const isWin = r.position_of_prize === 1;
+                    const isCash = r.prize_amount && Number(r.prize_amount) > 0;
+                    return (
+                      <tr key={r.id} className="hover:bg-base-200/30 transition-colors border-b border-base-200/50 last:border-0">
+                        <td className="pl-6 font-mono text-xs opacity-50">
+                          {r.event?.start_date ? new Date(r.event.start_date).toLocaleDateString("en-GB") : "-"}
+                        </td>
+                        <td>
+                          <div className="font-bold text-sm text-base-content/90">{r.event?.name}</div>
+                          <div className="text-[10px] opacity-50 uppercase tracking-wide">{r.event?.site_name}</div>
+                        </td>
+                        <td className="text-right">
+                          {isWin ? (
+                            <span className="badge badge-warning badge-xs font-bold text-black">1st</span>
+                          ) : (
+                            <span className="font-mono text-xs font-bold text-base-content/70">{r.position_of_prize ? `#${r.position_of_prize}` : "-"}</span>
+                          )}
+                        </td>
+                        <td className="text-right font-mono text-sm font-bold text-primary">
+                          {Number(r.points).toFixed(0)}
+                        </td>
+                        <td className="text-right pr-6 font-mono text-xs text-base-content/60">
+                          {isCash ? `£${Number(r.prize_amount).toLocaleString()}` : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!recent_results.length && (
+                    <tr><td colSpan={5} className="text-center py-8 text-sm opacity-50">No recent results found.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN: Sidebar Stats */}
+        <div className="space-y-6">
+          
+          <div className="card bg-base-100 shadow-xl border border-white/5 p-6">
+            <h4 className="text-xs font-bold uppercase tracking-widest text-base-content/40 mb-6">Career Stats</h4>
+            
+            <div className="space-y-6">
+              <div className="flex justify-between items-center border-b border-white/5 pb-3 last:border-0">
+                <span className="text-sm font-medium text-base-content/70">Events Played</span>
+                <span className="text-xl font-bold text-white">{stats.results_count}</span>
+              </div>
+              <div className="flex justify-between items-center border-b border-white/5 pb-3 last:border-0">
+                <span className="text-sm font-medium text-base-content/70">Total Wins</span>
+                <span className="text-xl font-bold text-white">{stats.total_wins}</span>
+              </div>
+              <div className="flex justify-between items-center border-b border-white/5 pb-3 last:border-0">
+                <span className="text-sm font-medium text-base-content/70">Win Rate</span>
+                <span className="text-xl font-bold text-white">
+                  {stats.results_count ? ((stats.total_wins / stats.results_count) * 100).toFixed(1) : 0}%
+                </span>
               </div>
             </div>
           </div>
 
-          <div className="flex-1 text-center md:text-left space-y-2">
-            <h1 className="text-4xl md:text-5xl font-black uppercase italic tracking-tighter text-white">
-              {p.name}
-            </h1>
-            <div className="flex flex-wrap justify-center md:justify-start gap-2">
-              <span className="badge badge-lg badge-primary font-bold uppercase text-xs tracking-wider">Pro Player</span>
-              {p.consent && <span className="badge badge-lg badge-ghost border-white/10 font-bold uppercase text-xs tracking-wider">Verified</span>}
-            </div>
-            
-            <div className="pt-4 flex flex-wrap justify-center md:justify-start gap-2">
-              {achievementBadges.map((b) => (
-                <span key={b} className="badge badge-outline text-xs text-base-content/60 border-white/10">{b}</span>
-              ))}
-            </div>
+          <div className="card bg-gradient-to-br from-primary/10 to-base-100 border border-primary/20 p-6">
+            <h4 className="text-xs font-bold uppercase tracking-widest text-primary mb-2">Claim This Profile</h4>
+            <p className="text-xs text-base-content/70 mb-4">
+              Is this you? Link your account to track your progress and upload your own photo.
+            </p>
+            <Link href="/signup" className="btn btn-primary btn-sm w-full uppercase font-bold tracking-widest">
+              Claim Profile
+            </Link>
           </div>
 
-          {/* Quick Stats Box */}
-          <div className="grid grid-cols-2 gap-4 bg-base-200/50 p-4 rounded-xl border border-white/5 min-w-[200px]">
-            <div>
-              <div className="text-xs font-bold uppercase text-base-content/40 tracking-wider">Lifetime Pts</div>
-              <div className="text-2xl font-black text-primary">{lifetimePoints.toFixed(0)}</div>
-            </div>
-            <div>
-              <div className="text-xs font-bold uppercase text-base-content/40 tracking-wider">Winnings</div>
-              <div className="text-2xl font-black text-white">£{Math.round(totalPrize/1000)}k</div>
-            </div>
-          </div>
         </div>
-      </section>
 
-      {/* 2. Detailed Stats Grid */}
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Results Tracked", value: totalResults, sub: "Last 30 events" },
-          { label: "Cashes (ITM)", value: cashesCount, sub: `${totalResults ? ((cashesCount/totalResults)*100).toFixed(0) : 0}% Rate` },
-          { label: "Best Finish", value: bestFinish ? `#${bestFinish}` : "-", sub: "In selection" },
-          { label: "Biggest Cash", value: biggestCash ? `£${biggestCash}` : "-", sub: "Single event" },
-        ].map((stat) => (
-          <div key={stat.label} className="card bg-base-100 shadow-lg border border-white/5 p-5 hover:border-primary/30 transition-colors">
-            <div className="text-xs font-bold uppercase tracking-widest text-base-content/40 mb-1">{stat.label}</div>
-            <div className="text-3xl font-black text-white">{stat.value}</div>
-            <div className="text-xs text-base-content/60 mt-1">{stat.sub}</div>
-          </div>
-        ))}
-      </section>
-
-      {/* 3. Recent Results Table */}
-      <section className="card bg-base-100 shadow-xl border border-white/5 overflow-hidden">
-        <div className="card-header p-6 border-b border-white/5 flex justify-between items-center">
-          <h3 className="text-xl font-bold uppercase tracking-wide">Recent Performance</h3>
-          <span className="text-xs font-bold uppercase text-base-content/40 tracking-widest">Last 30 Events</span>
-        </div>
-        <div className="p-0 overflow-x-auto">
-          {!recent.length ? (
-            <div className="p-8 text-center text-base-content/50 italic">No recent results found.</div>
-          ) : (
-            <table className="table table-lg w-full">
-              <thead>
-                <tr className="bg-base-200/50 text-xs uppercase text-base-content/60 border-b border-white/5">
-                  <th>Date</th>
-                  <th>Event</th>
-                  <th>Venue</th>
-                  <th className="text-right">Pos</th>
-                  <th className="text-right">Points</th>
-                  <th className="text-right">Prize</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.map((r) => {
-                  const isWin = r.position_of_prize === 1;
-                  const isCash = r.prize_amount && Number(r.prize_amount) > 0;
-                  return (
-                    <tr key={r.id} className="hover:bg-base-200/30 transition-colors border-b border-base-200/50 last:border-0">
-                      <td className="font-mono text-xs opacity-60">
-                        {r.event?.start_date ? new Date(r.event.start_date).toLocaleDateString("en-GB") : "—"}
-                      </td>
-                      <td className="font-bold text-white">
-                        {r.event?.name || "Unknown Event"}
-                        <div className="text-xs font-normal opacity-50 md:hidden">{r.event?.site_name}</div>
-                      </td>
-                      <td className="text-sm opacity-70 hidden md:table-cell">{r.event?.site_name || "—"}</td>
-                      <td className="text-right font-mono">
-                        {isWin ? <span className="text-warning">🏆 1st</span> : r.position_of_prize ? `#${r.position_of_prize}` : "—"}
-                      </td>
-                      <td className="text-right font-mono font-bold text-primary">{r.points ? Number(r.points).toFixed(2) : "0.00"}</td>
-                      <td className={`text-right font-mono ${isCash ? "text-success" : "opacity-30"}`}>
-                        {r.prize_amount ? `£${r.prize_amount}` : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </section>
-
-      <div className="text-center pt-4">
-        <Link href="/players" className="btn btn-ghost btn-sm uppercase font-bold text-xs tracking-widest opacity-60 hover:opacity-100">
-          ← Back to All Players
-        </Link>
       </div>
     </div>
   );

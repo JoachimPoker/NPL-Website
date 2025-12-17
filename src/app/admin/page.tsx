@@ -1,81 +1,92 @@
-"use client";
-import React, { useState } from 'react';
-import Link from 'next/link';
+import Link from "next/link";
+import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import AdminTools from "@/components/admin/AdminTools";
 
-export default function AdminDashboard() {
-  const [snapping, setSnapping] = useState(false);
-  const [wiping, setWiping] = useState(false);
+export const revalidate = 0; // Always fresh data
 
-  // ... (takeSnapshot function from before) ...
-  const takeSnapshot = async () => { /* code from previous message */ };
+export default async function AdminDashboard() {
+  const supabase = await createSupabaseServerClient();
 
-  const handleReset = async () => {
-    if (!confirm("⚠️ DANGER ZONE ⚠️\n\nThis will delete ALL players, events, results, and seasons.\n\nAre you sure?")) return;
-    if (!confirm("Seriously, there is no undo button.\n\nType 'DELETE' into the console if you were a coder, but just click OK here to wipe everything.")) return;
-    
-    setWiping(true);
-    try {
-      const res = await fetch("/api/admin/reset-db", { method: "POST" });
-      const json = await res.json();
-      if (json.ok) {
-        alert("Database has been reset. You have a clean slate.");
-        window.location.reload();
-      } else {
-        alert("Error: " + json.error);
-      }
-    } catch (e) { alert("Connection Error"); }
-    setWiping(false);
-  };
+  // 1. Fetch Quick Stats
+  const [seasonRes, playersRes, eventsRes] = await Promise.all([
+    supabase.from("seasons").select("label").eq("is_active", true).maybeSingle(),
+    supabase.from("players").select("id", { count: "exact", head: true }),
+    supabase.from("events").select("id", { count: "exact", head: true })
+  ]);
+
+  const activeLabel = seasonRes.data?.label || "No Active Season";
+  const playerCount = playersRes.count || 0;
+  const eventCount = eventsRes.count || 0;
 
   return (
-    <div className="container mx-auto py-12 px-4 space-y-8">
-      <h1 className="text-4xl font-black uppercase italic">Admin Dashboard</h1>
+    <div className="container mx-auto max-w-6xl py-12 px-4 space-y-12">
+      
+      {/* HEADER & KPI */}
+      <div className="space-y-6">
+        <div>
+            <div className="text-xs font-bold uppercase tracking-widest text-primary mb-2">Command Center</div>
+            <h1 className="text-4xl md:text-5xl font-black uppercase italic tracking-tighter text-white">
+            Admin Dashboard
+            </h1>
+        </div>
 
+        {/* KPI CARDS */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="stat bg-base-100 shadow-lg border border-white/5 rounded-xl">
+                <div className="stat-title text-xs font-bold uppercase tracking-wider opacity-60">Active Season</div>
+                <div className="stat-value text-2xl text-primary">{activeLabel}</div>
+            </div>
+            <div className="stat bg-base-100 shadow-lg border border-white/5 rounded-xl">
+                <div className="stat-title text-xs font-bold uppercase tracking-wider opacity-60">Total Players</div>
+                <div className="stat-value text-2xl">{playerCount}</div>
+            </div>
+            <div className="stat bg-base-100 shadow-lg border border-white/5 rounded-xl">
+                <div className="stat-title text-xs font-bold uppercase tracking-wider opacity-60">Events Logged</div>
+                <div className="stat-value text-2xl">{eventCount}</div>
+            </div>
+        </div>
+      </div>
+
+      <div className="divider opacity-10">MANAGEMENT</div>
+
+      {/* QUICK ACTIONS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Existing Links */}
-        <Link href="/admin/seasons" className="card bg-base-100 shadow-xl border border-white/5 hover:border-primary transition-colors p-6">
-          <h3 className="font-bold text-lg">Manage Seasons</h3>
-          <p className="text-sm opacity-50">Create leagues, set dates.</p>
+        <Link href="/admin/import" className="group card bg-base-100 shadow-xl border border-white/5 hover:border-primary/50 transition-all hover:-translate-y-1 cursor-pointer">
+          <div className="card-body">
+            <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-2xl mb-2 group-hover:bg-primary group-hover:text-black transition-colors">
+              📥
+            </div>
+            <h3 className="card-title text-lg font-bold">Import Results</h3>
+            <p className="text-xs text-base-content/60">Upload Excel spreadsheets to update rankings.</p>
+          </div>
         </Link>
-        <Link href="/admin/events" className="card bg-base-100 shadow-xl border border-white/5 hover:border-primary transition-colors p-6">
-          <h3 className="font-bold text-lg">Manage Events</h3>
-          <p className="text-sm opacity-50">Edit names, set High Roller status.</p>
+
+        <Link href="/admin/events" className="group card bg-base-100 shadow-xl border border-white/5 hover:border-primary/50 transition-all hover:-translate-y-1 cursor-pointer">
+          <div className="card-body">
+            <div className="w-12 h-12 rounded-lg bg-secondary/10 flex items-center justify-center text-2xl mb-2 group-hover:bg-secondary group-hover:text-black transition-colors">
+              🗓️
+            </div>
+            <h3 className="card-title text-lg font-bold">Manage Events</h3>
+            <p className="text-xs text-base-content/60">Edit event names, set High Roller status.</p>
+          </div>
         </Link>
-        <Link href="/admin/import" className="card bg-base-100 shadow-xl border border-white/5 hover:border-primary transition-colors p-6">
-          <h3 className="font-bold text-lg">Import Results</h3>
-          <p className="text-sm opacity-50">Upload Excel files.</p>
+
+        <Link href="/admin/seasons" className="group card bg-base-100 shadow-xl border border-white/5 hover:border-primary/50 transition-all hover:-translate-y-1 cursor-pointer">
+          <div className="card-body">
+            <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center text-2xl mb-2 group-hover:bg-accent group-hover:text-black transition-colors">
+              🏆
+            </div>
+            <h3 className="card-title text-lg font-bold">Manage Seasons</h3>
+            <p className="text-xs text-base-content/60">Create new seasons and configure leagues.</p>
+          </div>
         </Link>
       </div>
 
-      <div className="divider opacity-10">MAINTENANCE</div>
+      <div className="divider opacity-10">SYSTEM TOOLS</div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* SNAPSHOT CARD */}
-        <div className="card bg-base-100 shadow-xl border border-white/5 p-6">
-          <h3 className="font-bold text-lg text-warning">Daily Actions</h3>
-          <p className="text-sm opacity-50 mb-4">Update "Biggest Movers" by saving history.</p>
-          <button 
-            className="btn btn-sm btn-outline btn-warning uppercase font-bold w-full" 
-            onClick={takeSnapshot} 
-            disabled={snapping}
-          >
-            {snapping ? "Saving..." : "📸 Save Daily Snapshot"}
-          </button>
-        </div>
+      {/* TOOLS & MAINTENANCE */}
+      <AdminTools />
 
-        {/* DANGER ZONE CARD */}
-        <div className="card bg-error/10 shadow-xl border border-error/20 p-6">
-          <h3 className="font-bold text-lg text-error">Danger Zone</h3>
-          <p className="text-sm opacity-50 mb-4">Delete all data to start fresh.</p>
-          <button 
-            className="btn btn-sm btn-error uppercase font-bold w-full text-white" 
-            onClick={handleReset} 
-            disabled={wiping}
-          >
-            {wiping ? "Deleting..." : "💀 Reset Database"}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

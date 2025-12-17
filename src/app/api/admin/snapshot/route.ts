@@ -1,22 +1,22 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminAuth";
+import { createSupabaseRouteClient } from "@/lib/supabaseServer";
+import { takeLeaderboardSnapshot } from "@/lib/leaderboardUtils";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  // 1. Check permissions
-  const gate = await requireAdmin();
-  if (!gate.ok) {
-    return NextResponse.json({ error: gate.error }, { status: gate.status });
-  }
-
-  // 2. Call the SQL function
-  const { error } = await gate.supabase.rpc("take_weekly_leaderboard_snapshot");
+  const supabase = await createSupabaseRouteClient();
   
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  }
+  try {
+    // Check Admin (Optional but recommended)
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  return NextResponse.json({ ok: true });
+    // Run the helper function
+    await takeLeaderboardSnapshot(supabase);
+
+    return NextResponse.json({ ok: true, message: "Snapshot taken successfully." });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
+  }
 }

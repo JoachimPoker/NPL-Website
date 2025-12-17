@@ -19,9 +19,10 @@ type League = {
   season_id?: number;
   label: string;
   slug: string;
-  scoring_method: string; // 'total' | 'capped'
+  scoring_method: string; 
   scoring_cap: number;
-  filter_is_high_roller: boolean | null; // true, false, or null (all)
+  filter_is_high_roller: boolean | null;
+  max_buy_in: number | null; // ✅ New Field
   league_bonuses?: Bonus[];
 };
 
@@ -36,7 +37,6 @@ export default function AdminSeasonDashboard({ params }: { params: Promise<{ id:
   const isNew = id === "create";
   const router = useRouter();
 
-  // FIX: Season state no longer includes scoring_method/scoring_cap
   const [season, setSeason] = useState<Season>({
     label: "", start_date: "", end_date: "", is_active: false, leagues: []
   });
@@ -62,8 +62,6 @@ export default function AdminSeasonDashboard({ params }: { params: Promise<{ id:
     setLoading(true);
     try {
       const url = isNew ? "/api/admin/seasons/create" : "/api/admin/seasons/update";
-      
-      // FIX: Payload only sends basic season info, no scoring rules
       const payload = {
         id: isNew ? undefined : Number(id),
         label: season.label,
@@ -145,7 +143,7 @@ export default function AdminSeasonDashboard({ params }: { params: Promise<{ id:
                 onClick={() => {
                    setEditingLeague({ 
                      season_id: Number(id), label: "", slug: "", scoring_method: "total", scoring_cap: 10, 
-                     filter_is_high_roller: null 
+                     filter_is_high_roller: null, max_buy_in: null 
                    } as any);
                    setModalOpen(true);
                 }}
@@ -166,13 +164,20 @@ export default function AdminSeasonDashboard({ params }: { params: Promise<{ id:
                     <div>
                       <h4 className="font-bold text-lg group-hover:text-primary transition-colors">{league.label}</h4>
                       <div className="text-xs opacity-60 flex gap-3 mt-1 font-mono">
-                         <span>Slug: /{league.slug}</span>
+                         <span>/{league.slug}</span>
                          <span>•</span>
-                         <span>
-                           {league.scoring_method === 'capped' ? `Best ${league.scoring_cap}` : 'Total Points'}
-                         </span>
-                         {league.filter_is_high_roller === true && <span className="text-secondary font-bold">• High Roller Only</span>}
-                         {league.filter_is_high_roller === false && <span className="text-warning font-bold">• Main Event Only</span>}
+                         <span>{league.scoring_method === 'capped' ? `Best ${league.scoring_cap}` : 'Total Points'}</span>
+                         
+                         {/* ✅ Dynamic Badge Display */}
+                         {league.filter_is_high_roller === true && (
+                           <span className="text-secondary font-bold">• High Roller Only</span>
+                         )}
+                         {league.max_buy_in && (
+                           <span className="text-success font-bold">• Under £{league.max_buy_in}</span>
+                         )}
+                         {league.filter_is_high_roller === null && !league.max_buy_in && (
+                           <span className="opacity-50">• All Events</span>
+                         )}
                       </div>
                     </div>
                     <button className="btn btn-sm btn-ghost">Edit</button>
@@ -199,16 +204,22 @@ export default function AdminSeasonDashboard({ params }: { params: Promise<{ id:
 
 /* --- League Modal Component --- */
 function LeagueModal({ league, seasonId, onClose, onSave }: { league: League, seasonId: number, onClose: () => void, onSave: () => void }) {
-  // Helpers to extract bonus values from the array (if editing existing)
   const getBonus = (type: string) => league.league_bonuses?.find(b => b.bonus_type === type)?.points_value || 0;
 
+  // Determine initial state for the criteria selector
+  let initialCriteria = "all";
+  if (league.filter_is_high_roller === true) initialCriteria = "hr";
+  else if (league.max_buy_in !== null) initialCriteria = "buyin";
+
+  const [criteria, setCriteria] = useState(initialCriteria);
+  
   const [form, setForm] = useState({
     ...league,
     season_id: seasonId,
     bonus_b2b: getBonus('back_to_back_wins'),
     bonus_over_cap: getBonus('participation_after_cap'),
-    // Helper for Select input (null is tricky in HTML select, convert to string)
-    filter_select: league.filter_is_high_roller === true ? "true" : league.filter_is_high_roller === false ? "false" : "all"
+    // Ensure numeric default for input, even if null in DB
+    max_buy_in: league.max_buy_in || 0 
   });
   
   const [saving, setSaving] = useState(false);
@@ -217,10 +228,12 @@ function LeagueModal({ league, seasonId, onClose, onSave }: { league: League, se
     setSaving(true);
     const url = league.id ? "/api/admin/leagues/update" : "/api/admin/leagues/create";
     
-    // Map the form state to what the API expects
+    // Logic to set database fields based on the dropdown choice
     const payload = { 
-      ...form, 
-      filter_is_high_roller: form.filter_select 
+      ...form,
+      // 1. All Events: HR filter null, Buyin null
+      filter_is_high_roller: criteria === "hr" ? true : null,
+      max_buy_in: criteria === "buyin" ? Number(form.max_buy_in) : null
     };
     
     try {
@@ -271,16 +284,34 @@ function LeagueModal({ league, seasonId, onClose, onSave }: { league: League, se
             </div>
         </div>
 
+        {/* ✅ UPDATED FILTERS SECTION */}
         <div className="divider text-xs font-bold opacity-30">FILTERS</div>
 
         <div className="form-control">
-            <label className="label text-xs font-bold opacity-50">Which events count?</label>
-            <select className="select select-bordered w-full" value={form.filter_select} onChange={e => setForm({...form, filter_select: e.target.value})}>
-                <option value="all">All Events</option>
-                <option value="true">High Rollers Only</option>
-                <option value="false">Standard Events Only (No HR)</option>
+            <label className="label text-xs font-bold opacity-50">Included Events</label>
+            <select className="select select-bordered w-full" value={criteria} onChange={e => setCriteria(e.target.value)}>
+                <option value="all">All Events (No Restrictions)</option>
+                <option value="hr">High Rollers Only</option>
+                <option value="buyin">Under Buy-in Amount</option>
             </select>
         </div>
+
+        {criteria === "buyin" && (
+          <div className="form-control">
+             <label className="label text-xs font-bold opacity-50">Max Buy-in (Currency agnostic)</label>
+             <div className="join">
+                <span className="btn btn-disabled join-item">&lt;</span>
+                <input 
+                  type="number" 
+                  className="input input-bordered join-item w-full" 
+                  value={form.max_buy_in} 
+                  onChange={e => setForm({...form, max_buy_in: Number(e.target.value)})} 
+                  placeholder="1000"
+                />
+             </div>
+             <div className="text-[10px] opacity-50 mt-1 pl-1">Events with buy-in LESS THAN this value will count.</div>
+          </div>
+        )}
 
         <div className="divider text-xs font-bold opacity-30">BONUSES</div>
         

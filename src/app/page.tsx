@@ -1,7 +1,8 @@
 import Link from "next/link";
+import HomeLeaderboard from "@/components/HomeLeaderboard";
 
 export const runtime = "nodejs";
-export const revalidate = 60;
+export const revalidate = 60; 
 
 /* ---------- Types ---------- */
 type LbRow = {
@@ -12,13 +13,14 @@ type LbRow = {
   events_played: number;
   wins?: number;
   is_anonymized: boolean;
-  movement: number; // New field: +2, -1, 0, etc.
+  movement?: number;
 };
 
 type HomeResp = {
   ok: true;
   season_meta: { id: number; label: string; start_date: string; end_date: string };
-  leaderboards: { npl: LbRow[]; hrl: LbRow[] };
+  leagues: { slug: string, label: string }[];
+  leaderboards: Record<string, LbRow[]>; 
   upcoming_events: Array<{ id: string; name: string; start_date: string }>;
   trending_players: Array<{ player_id: string; hits: number; display_name: string }>;
   biggest_gainers: Array<{ player_id: string; display_name: string; from_pos: number; to_pos: number; delta: number }>;
@@ -40,8 +42,16 @@ function AnnouncementBar() {
 function Hero() {
   return (
     <div className="relative w-full h-[400px] bg-neutral overflow-hidden">
-      <div className="absolute inset-0 bg-cover bg-right bg-no-repeat opacity-50" style={{ backgroundImage: 'url(/poker-hero.jpg)' }}></div>
+      {/* Background Image (Anchored Right) */}
+      <div 
+        className="absolute inset-0 bg-cover bg-right bg-no-repeat opacity-50"
+        style={{ backgroundImage: 'url(/poker-hero.jpg)' }} 
+      ></div>
+      
+      {/* Gradient Overlay (Left to Right) */}
       <div className="absolute inset-0 bg-gradient-to-r from-base-100 via-base-100/90 to-transparent"></div>
+
+      {/* Content Content */}
       <div className="relative z-10 mx-auto h-full max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col justify-center">
         <div className="max-w-xl space-y-6">
           <h1 className="text-5xl md:text-6xl font-black uppercase italic tracking-tighter text-white leading-[0.9]">
@@ -51,20 +61,17 @@ function Hero() {
             Join the National Poker League. Track your stats, climb the ranks, and compete for glory.
           </p>
           <div className="flex gap-4">
-            <Link href="/signup" className="btn btn-primary btn-lg uppercase font-bold border-none">Join the League</Link>
-            <Link href="/leaderboards" className="btn btn-outline btn-lg uppercase font-bold text-white hover:bg-white hover:text-black">View Standings</Link>
+            <Link href="/signup" className="btn btn-primary btn-lg uppercase font-bold border-none">
+              Join the League
+            </Link>
+            <Link href="/leaderboards" className="btn btn-outline btn-lg uppercase font-bold text-white hover:bg-white hover:text-black">
+              View Standings
+            </Link>
           </div>
         </div>
       </div>
     </div>
   );
-}
-
-// Helper for Rank Movement Arrows
-function RankMovement({ move }: { move: number }) {
-  if (move > 0) return <span className="text-xs font-bold text-success flex items-center justify-center gap-0.5">▲ {move}</span>;
-  if (move < 0) return <span className="text-xs font-bold text-error flex items-center justify-center gap-0.5">▼ {Math.abs(move)}</span>;
-  return <span className="text-xs font-bold text-base-content/20 flex items-center justify-center">—</span>;
 }
 
 /* ---------- Page ---------- */
@@ -75,84 +82,35 @@ export default async function HomePage() {
   if (!res.ok) return <div className="p-8 text-center">Failed to load data.</div>;
   const data = (await res.json()) as HomeResp;
 
-  const nplTop = data.leaderboards.npl.slice(0, 18);
-  const bubblePlayers = data.leaderboards.npl.slice(18, 23);
+  // Use the "Global" or "NPL" league (or the first one available) for the Bubble Watch widget
+  const mainLeagueSlug = data.leagues.find(l => l.slug === 'global' || l.slug === 'npl')?.slug || data.leagues[0]?.slug;
+  const mainData = data.leaderboards[mainLeagueSlug] || [];
+  
+  // Get ranks 19-23 for Bubble Watch (Indices 18-23)
+  const bubblePlayers = mainData.slice(18, 23);
 
   return (
     <div className="flex flex-col min-h-screen">
       <AnnouncementBar />
       <Hero />
 
+      {/* Main Content Area (2-Column Grid) */}
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* LEFT COLUMN */}
+          {/* LEFT COLUMN (Wide, ~65%) */}
           <div className="lg:col-span-8 space-y-8">
-            <div className="card bg-base-100 shadow-xl border border-white/5">
-              <div className="card-header p-6 border-b border-base-200 flex items-center justify-between">
-                <div>
-                   <h3 className="text-xl font-bold uppercase tracking-wide">🏆 Official Leaderboards</h3>
-                   <div className="text-xs opacity-50 uppercase tracking-widest">{data.season_meta.label}</div>
-                </div>
-                <div className="tabs tabs-boxed bg-base-200">
-                  <a className="tab tab-active text-xs font-bold uppercase">NPL</a>
-                </div>
-              </div>
-              
-              <div className="p-0 overflow-x-auto">
-                <table className="table table-lg w-full">
-                  <thead>
-                    <tr className="bg-base-200/50 text-xs uppercase text-base-content/60">
-                      <th className="w-20 text-center">Rank</th>
-                      <th>Player</th>
-                      <th className="text-right">Events</th>
-                      <th className="text-right">Wins</th>
-                      <th className="text-right">Points</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {nplTop.map((r) => (
-                      <tr key={r.position} className="hover:bg-base-200/30 transition-colors border-b border-base-200/50">
-                        <td className="text-center">
-                          <div className="font-black text-xl italic text-base-content/40">{r.position}</div>
-                          {/* MOVEMENT ARROW */}
-                          <div className="mt-1"><RankMovement move={r.movement} /></div>
-                        </td>
-                        <td>
-                          {r.is_anonymized || !r.player_id ? (
-                             <div className="font-bold text-lg text-white/50 italic flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-base-300 flex items-center justify-center text-xs font-bold text-base-content/30">🔒</div>
-                                {r.display_name}
-                             </div>
-                          ) : (
-                             <Link href={`/players/${r.player_id}`} className="font-bold text-lg hover:text-primary transition-colors flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-base-300 flex items-center justify-center text-xs font-bold text-base-content/50">
-                                  {r.display_name.charAt(0)}
-                                </div>
-                                {r.display_name}
-                             </Link>
-                          )}
-                        </td>
-                        <td className="text-right font-mono text-base-content/70">{r.events_played}</td>
-                        <td className="text-right font-mono text-base-content/70">{r.wins ?? 0}</td>
-                        <td className="text-right font-black text-primary text-lg">{Number(r.total_points).toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="p-4 border-t border-base-200 text-center">
-                <Link href="/leaderboards" className="btn btn-ghost btn-sm uppercase text-xs tracking-widest">
-                  View Full Leaderboard →
-                </Link>
-              </div>
-            </div>
+            <HomeLeaderboard 
+                leagues={data.leagues}
+                leaderboards={data.leaderboards} 
+                seasonLabel={data.season_meta.label} 
+            />
           </div>
 
-          {/* RIGHT COLUMN */}
+          {/* RIGHT COLUMN (Narrow, ~35%) */}
           <div className="lg:col-span-4 space-y-6">
             
-            {/* Trending Players */}
+            {/* 1. Trending Players */}
             <div className="card bg-base-100 shadow-lg border border-white/5 p-5">
               <h4 className="text-sm font-bold uppercase tracking-widest text-base-content/50 mb-4 flex items-center gap-2">
                 🔥 Trending Players
@@ -169,7 +127,7 @@ export default async function HomePage() {
               </ul>
             </div>
 
-            {/* RESTORED: Biggest Gainers */}
+            {/* 2. Biggest Gainers */}
             <div className="card bg-base-100 shadow-lg border border-white/5 p-5">
               <h4 className="text-sm font-bold uppercase tracking-widest text-base-content/50 mb-4 flex items-center gap-2">
                 🚀 Biggest Movers (Week)
@@ -184,7 +142,6 @@ export default async function HomePage() {
                         {g.display_name}
                       </Link>
                       <div className="flex items-center gap-2">
-                         {/* Show rank change: e.g. #25 -> #20 */}
                         <span className="text-xs text-base-content/40">#{g.from_pos} → #{g.to_pos}</span>
                         <span className="badge badge-success badge-sm font-bold text-white">+{g.delta}</span>
                       </div>
@@ -194,7 +151,7 @@ export default async function HomePage() {
               </ul>
             </div>
 
-            {/* Bubble Watch */}
+            {/* 3. The Bubble Watch (19th - 23rd) */}
             <div className="card bg-warning/10 shadow-lg border border-warning/20 p-5">
               <h4 className="text-sm font-bold uppercase tracking-widest text-warning mb-4 flex items-center gap-2">
                 ⚠️ The Bubble Watch

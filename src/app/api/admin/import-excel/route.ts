@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import * as XLSX from "xlsx";
+// NEW LIBRARY: Much simpler and works with Next.js/Turbopack
+import readXlsxFile from "read-excel-file/node"; 
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -42,6 +43,7 @@ function toNum(v: unknown): number | null {
   const n = Number(String(v).replace(/[,£$]/g, ""));
   return Number.isFinite(n) ? n : null;
 }
+// Helper to convert the library's date format if needed
 function toDateYYYYMMDD(x: unknown): string | null {
   if (!x) return null;
   const d = new Date(x as any);
@@ -54,29 +56,14 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-type RowTP = {
-  "Player Id"?: string | number;
-  Forename?: string;
-  Surname?: string;
-  "Full Name"?: string;
-  "Tournament Id"?: string | number;
-  "Tournament Name"?: string;
-  "Start Date"?: string | Date;
-  "Buy In"?: string | number;
-  Casino?: string;
-  GDPR?: string | number | boolean;
-  Points?: string | number;
-  "Prize Amount"?: string | number;
-  "Position Of Prize"?: string | number;
-};
-
 /* --- Main Handler --- */
 export async function POST(req: NextRequest) {
   try {
+    console.log("Starting Import Process (read-excel-file)...");
     const { supabase, userId } = await requireAdmin();
     const form = await req.formData();
     
-    // 1. Get Date (Default to Today if blank)
+    // 1. Get Date
     const rawDate = form.get("snapshotDate") as string | null;
     const snapshotDate = rawDate || new Date().toISOString().split('T')[0];
 
@@ -86,7 +73,7 @@ export async function POST(req: NextRequest) {
     ];
     if (!files.length) return NextResponse.json({ error: "No files uploaded." }, { status: 400 });
 
-    // 2. Create Batch Record (Saving snapshot_date)
+    // 2. Create Batch Record
     const filenames = files.map((f) => (f as any).name || "upload.xlsx").join(", ");
     const { data: batch } = await supabase
       .from("import_batches")
@@ -95,7 +82,7 @@ export async function POST(req: NextRequest) {
         filename: filenames, 
         row_count: 0, 
         status: "parsing",
-        snapshot_date: snapshotDate // <--- Saving the date to DB
+        snapshot_date: snapshotDate
       } as any)
       .select("*")
       .single();
@@ -106,38 +93,61 @@ export async function POST(req: NextRequest) {
 
     // 3. Process Files
     for (const file of files) {
-      const buf = Buffer.from(await file.arrayBuffer());
-      const wb = XLSX.read(buf, { type: "buffer", cellDates: true, raw: false });
-      const tpSheet = wb.Sheets["TotalPoints"];
-      if (!tpSheet) continue;
+      console.log(`Reading file: ${(file as any).name}`);
+      
+      // Convert File to Buffer
+      const buffer = Buffer.from(await file.arrayBuffer());
 
-      const tpRows = XLSX.utils.sheet_to_json<RowTP>(tpSheet, { defval: null });
+      // Parse Excel
+      // This library returns an array of rows: [ [header1, header2], [val1, val2], ... ]
+      const rows = await readXlsxFile(buffer, { sheet: 'TotalPoints' });
+
+      if (!rows || rows.length === 0) {
+        console.warn("Sheet 'TotalPoints' not found or empty.");
+        continue;
+      }
+
+      // Extract Headers (first row)
+      const headers = rows[0].map((h: any) => String(h).trim());
+      const dataRows = rows.slice(1); // Skip header row
+
+      console.log(`Parsed ${dataRows.length} rows.`);
 
       const eventsMap = new Map<string, any>();
       const playersMap = new Map<string, any>();
       const aliasesSet = new Set<string>();
       const resultsRows: any[] = [];
 
-      for (const r of tpRows) {
-        const playerId = r["Player Id"] != null ? String(r["Player Id"]).trim() : "";
-        const fullName = r["Full Name"] != null ? String(r["Full Name"]).trim() : "";
-        const tournamentId = r["Tournament Id"] != null ? String(r["Tournament Id"]).trim() : "";
+      // Helper to find value by header name
+      const getValue = (row: any[], headerName: string) => {
+        const index = headers.indexOf(headerName);
+        return index !== -1 ? row[index] : null;
+      };
+
+      for (const r of dataRows) {
+        const playerIdVal = getValue(r, "Player Id");
+        const fullNameVal = getValue(r, "Full Name");
+        const tournamentIdVal = getValue(r, "Tournament Id");
+
+        const playerId = playerIdVal != null ? String(playerIdVal).trim() : "";
+        const fullName = fullNameVal != null ? String(fullNameVal).trim() : "";
+        const tournamentId = tournamentIdVal != null ? String(tournamentIdVal).trim() : "";
         
         if (tournamentId) {
           eventsMap.set(tournamentId, {
              id: tournamentId, 
-             name: r["Tournament Name"], 
-             start_date: toDateYYYYMMDD(r["Start Date"]), 
-             buy_in_raw: r["Buy In"], 
-             site_name: r.Casino 
+             name: getValue(r, "Tournament Name"), 
+             start_date: toDateYYYYMMDD(getValue(r, "Start Date")), 
+             buy_in_raw: getValue(r, "Buy In"), 
+             site_name: getValue(r, "Casino") 
           });
           tournamentsTouched.add(tournamentId);
         }
         if (playerId) {
           playersMap.set(playerId, {
             id: playerId,
-            forename: r.Forename,
-            surname: r.Surname,
+            forename: getValue(r, "Forename"),
+            surname: getValue(r, "Surname"),
             display_name: fullName,
           });
           if (fullName) aliasesSet.add(`${playerId}|${fullName.toLowerCase()}`);
@@ -147,20 +157,22 @@ export async function POST(req: NextRequest) {
           resultsRows.push({
             player_id: playerId || null,
             event_id: tournamentId || null,
-            points: toNum(r.Points),
-            prize_amount: toNum(r["Prize Amount"]),
-            position_of_prize: toNum(r["Position Of Prize"]),
-            gdpr_flag: toBool(r.GDPR),
+            points: toNum(getValue(r, "Points")),
+            prize_amount: toNum(getValue(r, "Prize Amount")),
+            position_of_prize: toNum(getValue(r, "Position Of Prize")),
+            gdpr_flag: toBool(getValue(r, "GDPR")),
             import_batch_id: batch?.id ?? null,
           });
         }
       }
 
       /* Upsert Events */
-      const eventArr = Array.from(eventsMap.values());
-      totalEventsUpserted += eventArr.length;
-      for (const slice of chunk(eventArr, 2000)) {
-         await supabase.from("events").upsert(slice as any, { onConflict: "id" });
+      if (eventsMap.size > 0) {
+        const eventArr = Array.from(eventsMap.values());
+        totalEventsUpserted += eventArr.length;
+        for (const slice of chunk(eventArr, 2000)) {
+           await supabase.from("events").upsert(slice as any, { onConflict: "id" });
+        }
       }
 
       /* Clear Old Results */
@@ -171,9 +183,11 @@ export async function POST(req: NextRequest) {
       }
 
       /* Upsert Players */
-      const playersArr = Array.from(playersMap.values());
-      for (const slice of chunk(playersArr, 2000)) {
-         await supabase.from("players").upsert(slice as any, { onConflict: "id" });
+      if (playersMap.size > 0) {
+        const playersArr = Array.from(playersMap.values());
+        for (const slice of chunk(playersArr, 2000)) {
+           await supabase.from("players").upsert(slice as any, { onConflict: "id" });
+        }
       }
 
       /* Upsert Aliases */
@@ -209,7 +223,7 @@ export async function POST(req: NextRequest) {
       batch_id: batch?.id ?? null,
     });
   } catch (e: any) {
-    console.error(e);
+    console.error("IMPORT ERROR:", e);
     return NextResponse.json({ error: e.message || "Import failed" }, { status: 500 });
   }
 }

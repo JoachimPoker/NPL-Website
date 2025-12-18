@@ -7,10 +7,10 @@ export const revalidate = 0;
 
 export async function GET(
   req: NextRequest,
-  props: { params: Promise<{ id: string }> }
+  props: { params: Promise<{ id: string }> } // Fix 1
 ) {
   try {
-    const params = await props.params;
+    const params = await props.params; // Fix 2
     const { id } = params;
 
     const cookieStore = await cookies();

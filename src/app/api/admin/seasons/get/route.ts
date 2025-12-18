@@ -5,8 +5,17 @@ export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const id = searchParams.get("id");
-  if (!id) return NextResponse.json({ ok: false, error: "Missing ID" }, { status: 400 });
+  const idParam = searchParams.get("id"); // This is a string
+
+  if (!idParam) {
+    return NextResponse.json({ ok: false, error: "Missing ID" }, { status: 400 });
+  }
+
+  // FIX: Convert string to number
+  const id = Number(idParam);
+  if (isNaN(id)) {
+    return NextResponse.json({ ok: false, error: "Invalid ID format" }, { status: 400 });
+  }
 
   const supabase = await createSupabaseRouteClient();
 
@@ -20,10 +29,12 @@ export async function GET(req: NextRequest) {
         league_bonuses (*)
       )
     `)
-    .eq("id", id)
+    .eq("id", id) // Now passing a number
     .single();
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
 
   // Sort leagues by ID or Label so they don't jump around
   if (data.leagues) {

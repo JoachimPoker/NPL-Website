@@ -1,40 +1,12 @@
-// src/app/api/admin/series/[id]/matching-results/route.ts
 import { NextResponse } from 'next/server'
 import { createSupabaseRouteClient } from '@/lib/supabaseServer'
 
-type RouteContext = { params: { id: string } }
-
-/**
- * GET /api/admin/series/:id/matching-results
- *
- * Query params:
- *  - q?: string                // extra substring filter on tournament_name
- *  - season_id?: number        // filter results by season date range
- *  - start_date_from?: string  // YYYY-MM-DD
- *  - start_date_to?: string    // YYYY-MM-DD
- *  - page?: number             // default 1
- *  - pageSize?: number         // default 100
- *  - assigned?: 'all' | 'this' | 'unassigned' | 'other' (optional)
- *      'this'        -> only results currently assigned to this series_id
- *      'unassigned'  -> results where series_id is null
- *      'other'       -> results where series_id is not null AND != this series_id
- *
- * Returns:
- *  {
- *    ok: true,
- *    series: { id, name, slug, description },
- *    page, pageSize, total,
- *    results: Array<{
- *      id, player_id, event_id, tournament_name, start_date,
- *      points, position_of_prize, prize_amount,
- *      series_id, festival_id,
- *      match_key?: string
- *    }>
- *  }
- */
+// Next.js 15 requires params to be a Promise
+type RouteContext = { params: Promise<{ id: string }> }
 
 export async function GET(req: Request, { params }: RouteContext) {
   try {
+    const { id } = await params
     const supabase = await createSupabaseRouteClient()
 
     // ---- auth: require admin ----
@@ -50,8 +22,7 @@ export async function GET(req: Request, { params }: RouteContext) {
 
     // ---- parse params ----
     const url = new URL(req.url)
-    const seriesIdRaw = params.id
-    const seriesId = Number(seriesIdRaw)
+    const seriesId = Number(id)
     if (!Number.isFinite(seriesId)) {
       return NextResponse.json({ error: 'Invalid series id' }, { status: 400 })
     }
@@ -65,11 +36,11 @@ export async function GET(req: Request, { params }: RouteContext) {
 
     const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10) || 1)
     const pageSizeRaw = parseInt(url.searchParams.get('pageSize') || '100', 10)
-    const pageSize = Math.min(Math.max(pageSizeRaw || 100, 1), 1000) // cap to 1000
+    const pageSize = Math.min(Math.max(pageSizeRaw || 100, 1), 1000)
     const from = (page - 1) * pageSize
     const to = from + pageSize - 1
 
-    // ---- load series (name + description) ----
+    // ---- load series ----
     const { data: series, error: seriesErr } = await supabase
       .from('series')
       .select('id, name, slug, description')
@@ -80,7 +51,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Series not found' }, { status: 404 })
     }
 
-    // Build keyword list: [series.name] + description[]
+    // Build keyword list
     const description: string[] = Array.isArray(series.description)
       ? (series.description as any[]).map(String).filter(Boolean)
       : typeof series.description === 'string'
@@ -91,25 +62,20 @@ export async function GET(req: Request, { params }: RouteContext) {
         : []
 
     const needles = [String(series.name || '').trim(), ...description].filter(s => s && s.trim().length > 0)
+    
     if (needles.length === 0 && !q) {
-      return NextResponse.json({
-        ok: true,
-        series,
-        page, pageSize,
-        total: 0,
-        results: [],
-      })
+      return NextResponse.json({ ok: true, series, page, pageSize, total: 0, results: [] })
     }
 
-    // Build OR filter for tournament_name ILIKE %needle%
-    // Supabase .or() uses a CSV of conditions like "tournament_name.ilike.%foo%,tournament_name.ilike.%bar%"
+    // Build OR filter for tournament_name (which exists on 'results')
     const orParts: string[] = []
     for (const n of needles) {
       const safe = n.replace(/[%]/g, '\\%')
       orParts.push(`tournament_name.ilike.*${safe}*`)
     }
-    // If caller also provided q, we add it as an additional AND filter below (to narrow results)
 
+    // ---- Main Query ----
+    // We Join 'events' to get date and relationship info
     let query = supabase
       .from('results')
       .select(
@@ -118,68 +84,84 @@ export async function GET(req: Request, { params }: RouteContext) {
         player_id,
         event_id,
         tournament_name,
-        start_date,
         points,
         position_of_prize,
         prize_amount,
-        series_id,
-        festival_id
+        events!inner (
+            start_date,
+            series_id,
+            festival_id
+        )
         `,
         { count: 'exact' }
       )
 
+    // Apply text search on 'results' table
     if (orParts.length > 0) {
-      // Note: .or() applies to the current query table (results)
       query = query.or(orParts.join(','))
     }
-
     if (q) {
       const safeQ = q.replace(/[%]/g, '\\%')
-      // Further restrict by also containing q
       query = query.ilike('tournament_name', `%${safeQ}%`)
     }
 
-    // Season / date filters
+    // --- Filters applied to the joined 'events' table ---
+    
+    // Season Filter
     if (seasonIdParam) {
       const seasonId = parseInt(seasonIdParam, 10)
       if (Number.isFinite(seasonId)) {
-        const { data: season, error: seasonErr } = await supabase
-          .from('seasons')
-          .select('id, start_date, end_date')
-          .eq('id', seasonId)
-          .single()
-        if (seasonErr || !season) {
-          return NextResponse.json({ error: 'Invalid season_id' }, { status: 400 })
+        const { data: season } = await supabase.from('seasons').select('start_date, end_date').eq('id', seasonId).single()
+        if (season) {
+          // Filter on the joined table using dot notation
+          query = query.gte('events.start_date', season.start_date).lte('events.start_date', season.end_date)
         }
-        query = query.gte('start_date', season.start_date).lte('start_date', season.end_date)
       }
     }
-    if (startDateFrom) query = query.gte('start_date', startDateFrom)
-    if (startDateTo)   query = query.lte('start_date', startDateTo)
 
-    // Assigned filter
+    // Date Range Filters
+    if (startDateFrom) query = query.gte('events.start_date', startDateFrom)
+    if (startDateTo)   query = query.lte('events.start_date', startDateTo)
+
+    // Assigned Filter
     if (assigned === 'this') {
-      query = query.eq('series_id', seriesId)
+      query = query.eq('events.series_id', seriesId)
     } else if (assigned === 'unassigned') {
-      query = query.is('series_id', null)
+      query = query.is('events.series_id', null)
     } else if (assigned === 'other') {
-      query = query.neq('series_id', seriesId).not('series_id', 'is', null)
+      query = query.neq('events.series_id', seriesId).not('events.series_id', 'is', null)
     }
 
-    // Pagination
-    query = query.order('start_date', { ascending: false }).range(from, to)
+    // Pagination & Sorting (Sort by foreign column)
+    query = query
+        .order('start_date', { foreignTable: 'events', ascending: false })
+        .range(from, to)
 
     const { data: rows, error: rowsErr, count } = await query
+    
     if (rowsErr) {
-      return NextResponse.json({ error: rowsErr.message || 'Query failed' }, { status: 500 })
+      console.error(rowsErr)
+      return NextResponse.json({ error: rowsErr.message }, { status: 500 })
     }
 
-    // Annotate with which keyword matched (best-effort, done client-side)
+    // Annotate results
     const lcNeedles = needles.map(s => s.toLowerCase())
-    const annotated = (rows || []).map(r => {
+    
+    // We map the rows to flatten the structure for the frontend if needed,
+    // or just return the nested structure. The original code expected flat fields.
+    // We will flatten it here to match expected API response.
+    const annotated = (rows || []).map((r: any) => {
       const name = (r.tournament_name || '').toLowerCase()
       const hit = lcNeedles.find(n => n && name.includes(n)) || (q ? q.toLowerCase() : undefined)
-      return { ...r, match_key: hit }
+      
+      return {
+        ...r,
+        // Flatten the joined event data back to top-level if your frontend expects it
+        start_date: r.events?.start_date,
+        series_id: r.events?.series_id,
+        festival_id: r.events?.festival_id,
+        match_key: hit 
+      }
     })
 
     return NextResponse.json({
@@ -190,6 +172,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       total: count ?? 0,
       results: annotated,
     })
+
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Internal error' }, { status: 500 })
   }

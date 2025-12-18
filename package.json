@@ -17,15 +17,14 @@
     "@supabase/supabase-js": "^2.77.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "exceljs": "^4.4.0",
     "lucide-react": "^0.544.0",
     "next": "^16.0.3",
     "papaparse": "^5.5.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "read-excel-file": "^6.0.1",
     "recharts": "^3.2.1",
-    "tailwind-merge": "^3.3.1",
-    "xlsx": "^0.18.5"
+    "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -34,6 +33,7 @@
     "@types/papaparse": "^5.3.16",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "baseline-browser-mapping": "^2.9.9",
     "daisyui": "^5.5.3",
     "eslint": "^9",
     "eslint-config-next": "^16.0.3",

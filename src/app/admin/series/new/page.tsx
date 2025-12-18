@@ -1,3 +1,4 @@
+// src/app/admin/series/new/page.tsx
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
@@ -10,19 +11,17 @@ async function requireAdmin() {
   const { data } = await supabase.auth.getUser();
   const user = data?.user;
   if (!user) redirect(`/login?next=/admin/series/new`);
-  
-  // Basic Admin Check
   const roles: string[] = ((user.app_metadata as any)?.roles ?? []) as string[];
-  const isAdmin = roles.includes("admin") || (user.user_metadata as any)?.is_admin === true;
-  
+  const isAdmin =
+    roles.includes("admin") ||
+    (user.app_metadata as any)?.role === "admin" ||
+    (user.user_metadata as any)?.is_admin === true;
   if (!isAdmin) redirect("/");
   return { supabase, user };
 }
 
-// ✅ Added props to capture 'searchParams' for error display
-export default async function NewSeriesPage(props: { searchParams: Promise<{ error?: string }> }) {
+export default async function NewSeriesPage() {
   await requireAdmin();
-  const searchParams = await props.searchParams;
 
   async function createSeries(formData: FormData) {
     "use server";
@@ -36,7 +35,13 @@ export default async function NewSeriesPage(props: { searchParams: Promise<{ err
       redirect("/admin/series/new?error=Missing+name+or+slug");
     }
 
-    const description = descriptionRaw || null;
+    // FIX: Default to "" (empty string) instead of null
+    const description =
+      descriptionRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join(", ") || "";
 
     const { data, error } = await supabase
       .from("series")
@@ -55,53 +60,84 @@ export default async function NewSeriesPage(props: { searchParams: Promise<{ err
   }
 
   return (
-    <div className="space-y-6 container mx-auto max-w-2xl py-8">
-      
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-            <h1 className="text-2xl font-black uppercase italic text-white">New Series</h1>
-            <p className="text-xs text-base-content/60">Create a brand (e.g. GUKPT, APAT)</p>
+    <div className="space-y-6">
+      {/* Top admin nav bar */}
+      <div className="card bg-base-100 shadow-sm">
+        <div className="card-body flex items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold">Admin — Series</div>
+            <div className="text-xs text-base-content/70">
+              Create a new series
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href="/admin" className="btn btn-ghost btn-sm">
+              Dashboard
+            </Link>
+            <Link href="/admin/series" className="btn btn-ghost btn-sm">
+              All Series
+            </Link>
+          </div>
         </div>
-        <Link href="/admin/series" className="btn btn-ghost btn-sm">Cancel</Link>
       </div>
 
-      {/* ✅ Error Alert */}
-      {searchParams.error && (
-        <div className="alert alert-error text-xs shadow-lg">
-          <span>⚠️ {searchParams.error}</span>
-        </div>
-      )}
-
-      <form action={createSeries} className="card bg-base-100 shadow-xl border border-white/5">
+      <form action={createSeries} className="card bg-base-100 shadow-sm">
         <div className="card-body space-y-4">
-          
-          <div className="form-control">
-            <label className="label"><span className="label-text text-xs font-bold uppercase">Name</span></label>
-            <input name="name" className="input input-bordered" placeholder="e.g. UK Poker League" required />
-          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="form-control">
+              <span className="label">
+                <span className="label-text text-sm">Name</span>
+              </span>
+              <input
+                name="name"
+                className="input input-bordered input-sm w-full"
+                placeholder="UKPL"
+                required
+              />
+            </label>
 
-          <div className="form-control">
-            <label className="label"><span className="label-text text-xs font-bold uppercase">Slug</span></label>
-            <input 
-                name="slug" 
-                className="input input-bordered font-mono text-sm" 
-                placeholder="ukpl" 
+            <label className="form-control">
+              <span className="label">
+                <span className="label-text text-sm">Slug</span>
+              </span>
+              <input
+                name="slug"
+                className="input input-bordered input-sm w-full"
+                placeholder="ukpl"
                 pattern="^[a-z0-9-]+$"
-                title="Lowercase letters, numbers, and dashes only"
-                required 
+                title="lowercase letters, numbers, and dashes only"
+                required
+              />
+            </label>
+          </div>
+
+          <label className="form-control">
+            <span className="label">
+              <span className="label-text text-sm">Description</span>
+            </span>
+            <input
+              name="description"
+              className="input input-bordered input-sm w-full"
+              placeholder="The UKPL is a 888 Live tournament"
             />
-          </div>
+            <p className="mt-1 text-xs text-base-content/60">
+              This is just what the series is about.
+            </p>
+          </label>
 
-          <div className="form-control">
-            <label className="label"><span className="label-text text-xs font-bold uppercase">Description</span></label>
-            <textarea name="description" className="textarea textarea-bordered h-24" placeholder="Brief details about this tour..."></textarea>
-          </div>
-
-          <div className="card-actions justify-end mt-4">
-            <button className="btn btn-primary uppercase font-bold tracking-widest" type="submit">
-              Create Series
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="btn btn-primary btn-sm"
+              type="submit"
+            >
+              Create series
             </button>
+            <Link
+              href="/admin/series"
+              className="btn btn-ghost btn-sm"
+            >
+              Cancel
+            </Link>
           </div>
         </div>
       </form>

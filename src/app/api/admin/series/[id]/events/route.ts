@@ -15,7 +15,7 @@ function isValidId(v: unknown): v is string {
 
 type EventRow = {
   id: string | number;
-  tournament_name?: string | null; // ✅ Changed to match alias
+  tournament_name?: string | null; 
   start_date?: string | null;
   festival_id?: string | null;
   series_id?: number | null;
@@ -43,10 +43,10 @@ async function requireAdmin() {
 
 export async function GET(
   _req: Request,
-  ctx: { params: Promise<{ id: string }> }
+  ctx: { params: Promise<{ id: string }> } // Fix 1
 ) {
   try {
-    const { id } = await ctx.params;
+    const { id } = await ctx.params; // Fix 2
     if (!isValidId(id)) return bad(400, "Missing/invalid series id");
     const seriesId = Number(id);
 
@@ -75,7 +75,7 @@ export async function GET(
     const esc = (s: string) => s.replace(/([,()])/g, "\\$1");
     const likeSeries = `%${esc(seriesTermRaw)}%`;
 
-    // ✅ FIX: Aliased 'name' to 'tournament_name' directly in SQL
+    // Aliased 'name' to 'tournament_name' directly in SQL
     let qb = supabase
       .from("events")
       .select("id, tournament_name:name, start_date, festival_id, series_id, is_deleted, search_text", {
@@ -115,7 +115,7 @@ export async function GET(
     // Map result
     const results = rows.map((r) => ({
       id: String(r.id),
-      tournament_name: r.tournament_name || null, // ✅ Using the alias directly
+      tournament_name: r.tournament_name || null,
       start_date: r.start_date ? String(r.start_date).slice(0, 10) : null,
       festival_id: r.festival_id ?? null,
       series_id: r.series_id ?? null,

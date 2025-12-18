@@ -1,77 +1,121 @@
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
+import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { updatePlayerAction, deletePlayerAction } from "../actions";
 
-export const runtime = "nodejs";
+// Ensure this page is not statically cached since it depends on Auth
+export const dynamic = "force-dynamic";
 
-export default async function AdminPlayerEdit(props: { params: Promise<{ id: string }> }) {
+export default async function EditPlayerPage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const { id } = params;
   const supabase = await createSupabaseServerClient();
 
+  // 1. Check Admin Auth
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  if (!user) redirect(`/login?next=/admin/players/${params.id}`);
 
-  const { data: p } = await supabase.from("players").select("*").eq("id", id).single();
+  // 2. Fetch Player Data
+  const { data: player, error } = await supabase
+    .from("players")
+    .select("*")
+    .eq("id", params.id)
+    .single();
 
-  if (!p) return <div className="p-12 text-center">Player not found</div>;
-
-  async function updatePlayer(formData: FormData) {
-    "use server";
-    const sb = await createSupabaseServerClient();
-    const payload = {
-      forename: formData.get("forename") as string,
-      surname: formData.get("surname") as string,
-      display_name: formData.get("display_name") as string || null,
-      email: formData.get("email") as string || null,
-    };
-    await sb.from("players").update(payload).eq("id", id);
-    redirect("/admin/players");
+  if (error || !player) {
+    notFound();
   }
 
   return (
-    <div className="container mx-auto max-w-3xl space-y-8 py-8 px-4">
-      <div className="flex items-center justify-between border-b border-white/5 pb-6">
+    <div className="container mx-auto max-w-2xl py-8 space-y-8">
+      
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <div className="text-xs font-bold uppercase tracking-widest text-primary mb-1">Edit Player</div>
-          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">
-            {p.forename} {p.surname}
+          <h1 className="text-3xl font-black uppercase italic text-white">
+            Edit Player
           </h1>
+          <p className="text-sm text-base-content/60">
+            ID: <span className="font-mono">{player.id}</span>
+          </p>
         </div>
+        <Link href="/admin/players" className="btn btn-ghost btn-sm">
+          Back to List
+        </Link>
       </div>
 
+      {/* UPDATE FORM */}
       <div className="card bg-base-100 shadow-xl border border-white/5">
-        <div className="card-body p-8">
-          <form action={updatePlayer} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="card-body">
+          <form action={updatePlayerAction} className="space-y-4">
+            <input type="hidden" name="id" value={player.id} />
+
+            <div className="grid grid-cols-2 gap-4">
               <div className="form-control">
-                <label className="label text-xs uppercase font-bold text-base-content/50">Forename</label>
-                <input name="forename" defaultValue={p.forename} className="input input-bordered bg-base-200/50 focus:bg-base-200" required />
+                <label className="label">
+                  <span className="label-text font-bold">Forename</span>
+                </label>
+                <input
+                  name="forename"
+                  defaultValue={player.forename || ""}
+                  className="input input-bordered w-full"
+                />
               </div>
+
               <div className="form-control">
-                <label className="label text-xs uppercase font-bold text-base-content/50">Surname</label>
-                <input name="surname" defaultValue={p.surname} className="input input-bordered bg-base-200/50 focus:bg-base-200" required />
+                <label className="label">
+                  <span className="label-text font-bold">Surname</span>
+                </label>
+                <input
+                  name="surname"
+                  defaultValue={player.surname || ""}
+                  className="input input-bordered w-full"
+                />
               </div>
             </div>
 
             <div className="form-control">
-              <label className="label text-xs uppercase font-bold text-base-content/50">Display Name / Alias</label>
-              <input name="display_name" defaultValue={p.display_name ?? ""} placeholder="e.g. 'PokerKing'" className="input input-bordered bg-base-200/50 focus:bg-base-200" />
-              <label className="label text-xs text-base-content/40">If set, this will be shown on leaderboards instead of the real name.</label>
+              <label className="label">
+                <span className="label-text font-bold">Bio</span>
+              </label>
+              <textarea
+                name="bio"
+                defaultValue={player.bio || ""}
+                className="textarea textarea-bordered h-32"
+                placeholder="Player biography..."
+              />
             </div>
 
-            <div className="form-control">
-              <label className="label text-xs uppercase font-bold text-base-content/50">Email (Private)</label>
-              <input name="email" type="email" defaultValue={p.email ?? ""} className="input input-bordered bg-base-200/50 focus:bg-base-200" />
-            </div>
-
-            <div className="flex gap-4 pt-4">
-              <button type="submit" className="btn btn-primary uppercase font-bold tracking-widest px-8">Save Changes</button>
-              <Link href="/admin/players" className="btn btn-ghost uppercase font-bold">Cancel</Link>
+            <div className="card-actions justify-end mt-4">
+              <button type="submit" className="btn btn-primary font-bold">
+                Save Changes
+              </button>
             </div>
           </form>
         </div>
       </div>
+
+      {/* DANGER ZONE */}
+      <div className="card bg-red-950/20 border border-red-900/50 shadow-xl">
+        <div className="card-body">
+          <h3 className="card-title text-red-500 text-sm uppercase font-black">
+            Danger Zone
+          </h3>
+          <p className="text-xs text-red-400/80 mb-4">
+            Deleting a player will remove them from all leaderboards. This action cannot be undone.
+          </p>
+          
+          <form action={deletePlayerAction}>
+            <input type="hidden" name="id" value={player.id} />
+            <button 
+              type="submit" 
+              className="btn btn-error btn-outline btn-sm w-full sm:w-auto"
+            >
+              Delete Player Permanently
+            </button>
+          </form>
+        </div>
+      </div>
+
     </div>
   );
 }

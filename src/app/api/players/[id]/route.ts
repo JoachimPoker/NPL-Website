@@ -1,4 +1,3 @@
-// src/app/api/players/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseRouteClient } from "@/lib/supabaseServer";
 import { displayName } from "@/lib/nameMask";
@@ -13,16 +12,14 @@ type PlayerRow = {
   avatar_url: string | null;
 };
 
-// ⚠️ CHANGE 1: 'params' is now a Promise
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> } // Fix 1
 ) {
-  const supabase = await createSupabaseRouteClient();
-  
-  // ⚠️ CHANGE 2: Must await params to get the ID
-  const { id } = await params;
+  const { id } = await params; // Fix 2
   const playerId = id;
+  
+  const supabase = await createSupabaseRouteClient();
 
   // --- Track that this player was viewed ---
   try {

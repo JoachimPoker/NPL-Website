@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 
-export default function ResetPasswordPage() {
+// 1. Move logic into a separate component
+function ResetPasswordContent() {
   const supabase = createSupabaseBrowserClient()
   const sp = useSearchParams()
-  const mode = sp.get('mode') // 'request' | 'update' (we'll infer)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const mode = sp.get('mode') 
   const [email, setEmail] = useState('')
   const [newPw, setNewPw] = useState('')
   const [busy, setBusy] = useState(false)
@@ -15,7 +17,6 @@ export default function ResetPasswordPage() {
   const [msg, setMsg] = useState<string | null>(null)
   const [hasSessionFromRecovery, setHasSessionFromRecovery] = useState(false)
 
-  // If user lands here from Supabase recovery link, they arrive with a session.
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setHasSessionFromRecovery(!!data.session)
@@ -52,7 +53,6 @@ export default function ResetPasswordPage() {
     setMsg('Password updated. You can close this tab and sign in.')
   }
 
-  // If user has an active recovery session: set new password
   if (hasSessionFromRecovery) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -97,7 +97,6 @@ export default function ResetPasswordPage() {
     )
   }
 
-  // Request reset link
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -138,5 +137,14 @@ export default function ResetPasswordPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// 2. Wrap it in Suspense for the main export
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div className="p-10 text-center">Loading...</div>}>
+      <ResetPasswordContent />
+    </Suspense>
   )
 }

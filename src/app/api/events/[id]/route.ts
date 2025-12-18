@@ -8,9 +8,14 @@ function bad(status: number, msg: string, extra?: any) {
   return NextResponse.json({ ok: false, error: msg, extra }, { status });
 }
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  _req: NextRequest, 
+  { params }: { params: Promise<{ id: string }> } // Fix 1: Promise type
+) {
+  const { id } = await params; // Fix 2: Await params
+  const eventId = id;
+  
   const supabase = await createSupabaseRouteClient();
-  const eventId = params.id;
 
   // Event
   const { data: ev, error: evErr } = await supabase

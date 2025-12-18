@@ -16,9 +16,10 @@ export async function GET(
 
   const supabase = await createSupabaseRouteClient();
 
+  // FIX: Renamed 'p_league' to 'p_scope' to match the RPC definition
   const { data, error } = await supabase.rpc("leaderboard_for_series", {
     p_series_id: Number(id),
-    p_league: league,
+    p_scope: league, 
   });
 
   if (error) {

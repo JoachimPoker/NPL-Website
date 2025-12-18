@@ -1,15 +1,12 @@
-// src/lib/supabaseServer.ts
 import { cookies } from "next/headers";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { Database } from '@/types/supabase'; // <--- Import this
 
-/**
- * Create a Supabase client for Server Components (read-only cookies).
- * Use this in RSC/page/server components where cookie writes aren't allowed.
- */
-export async function createSupabaseServerClient(): Promise<SupabaseClient> {
-  const cookieStore = await cookies(); // Next 15: async
-  return createServerClient(
+export async function createSupabaseServerClient() {
+  const cookieStore = await cookies();
+  
+  // Add <Database> here
+  return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -18,7 +15,7 @@ export async function createSupabaseServerClient(): Promise<SupabaseClient> {
           return cookieStore.get(name)?.value;
         },
         set(_name: string, _value: string, _options: CookieOptions) {
-          // no-op in RSC to avoid Next warnings about setting cookies
+          // no-op in RSC
         },
         remove(_name: string, _options: CookieOptions) {
           // no-op in RSC
@@ -28,13 +25,11 @@ export async function createSupabaseServerClient(): Promise<SupabaseClient> {
   );
 }
 
-/**
- * Create a Supabase client for Route Handlers (cookie writes allowed).
- * Use this in /app/api/** route handlers.
- */
-export async function createSupabaseRouteClient(): Promise<SupabaseClient> {
-  const cookieStore = await cookies(); // Next 15: async
-  return createServerClient(
+export async function createSupabaseRouteClient() {
+  const cookieStore = await cookies();
+  
+  // Add <Database> here
+  return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -46,7 +41,6 @@ export async function createSupabaseRouteClient(): Promise<SupabaseClient> {
           cookieStore.set({ name, value, ...options });
         },
         remove(name: string, options: CookieOptions) {
-          // You can also use cookieStore.delete(name) if you prefer
           cookieStore.set({ name, value: "", ...options });
         },
       },

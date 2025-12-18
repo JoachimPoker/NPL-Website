@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { bulkUpdateEventsAction } from "./actions"; // Import the action
 
-// 1. Updated Type Definition
+// Type Definition
 type Event = {
-  id: number;
+  id: number; // Changed to number to match your DB (was string in some places, number in others. Adjust if needed)
   name: string;
   start_date: string | null;
   is_high_roller: boolean | null;
@@ -15,7 +16,7 @@ type Event = {
 export default function EventsTable({ events }: { events: Event[] }) {
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition(); // New Hook
 
   // Toggle Single Row
   const toggleSelection = (id: number) => {
@@ -24,43 +25,34 @@ export default function EventsTable({ events }: { events: Event[] }) {
     );
   };
 
-  // Toggle All on Page
+  // Toggle All
   const toggleAll = () => {
     if (selectedIds.length === events.length) {
-      setSelectedIds([]); // Deselect all
+      setSelectedIds([]); 
     } else {
-      setSelectedIds(events.map(e => e.id)); // Select all
+      setSelectedIds(events.map(e => e.id)); 
     }
   };
 
-  // Send Bulk Update
-  const handleBulkUpdate = async (updates: any) => {
+  // Handle Bulk Update via Server Action
+  const handleBulkUpdate = (updates: { is_high_roller: boolean }) => {
     if (!confirm(`Update ${selectedIds.length} events?`)) return;
-    
-    setLoading(true);
-    try {
-      const res = await fetch("/api/admin/events/bulk-update", {
-        method: "POST",
-        body: JSON.stringify({
-          event_ids: selectedIds,
-          updates: updates
-        })
-      });
-      
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
 
-      // Success
-      setSelectedIds([]); // Clear selection
-      router.refresh(); // Reload data
-    } catch (e: any) {
-      alert("Error: " + e.message);
-    } finally {
-      setLoading(false);
-    }
+    startTransition(async () => {
+      try {
+        await bulkUpdateEventsAction(selectedIds, updates);
+        
+        // Success Logic
+        setSelectedIds([]); // Clear selection
+        // Router refresh is handled automatically by revalidatePath in the action, 
+        // but we can call it explicitly if needed.
+      } catch (e: any) {
+        alert("Error: " + e.message);
+      }
+    });
   };
 
-  // Helper to safely get series name
+  // Helper
   const getSeriesName = (series: Event['series']) => {
     if (!series) return "—";
     if (Array.isArray(series)) return series[0]?.name || "—";
@@ -70,7 +62,7 @@ export default function EventsTable({ events }: { events: Event[] }) {
   return (
     <div className="card bg-base-100 shadow-xl border border-white/5 overflow-hidden relative">
       
-      {/* Bulk Actions Toolbar (Floating) */}
+      {/* Bulk Actions Toolbar */}
       {selectedIds.length > 0 && (
         <div className="absolute top-0 left-0 right-0 z-10 bg-primary text-primary-content p-2 px-4 flex justify-between items-center animate-in slide-in-from-top-2">
           <div className="font-bold text-sm">
@@ -80,16 +72,16 @@ export default function EventsTable({ events }: { events: Event[] }) {
             <button 
               className="btn btn-sm btn-white text-primary border-0 font-bold uppercase"
               onClick={() => handleBulkUpdate({ is_high_roller: true })}
-              disabled={loading}
+              disabled={isPending}
             >
-              Set High Roller
+              {isPending ? "Saving..." : "Set High Roller"}
             </button>
             <button 
               className="btn btn-sm btn-ghost border-white/20 border font-bold uppercase"
               onClick={() => handleBulkUpdate({ is_high_roller: false })}
-              disabled={loading}
+              disabled={isPending}
             >
-              Set NPL
+              {isPending ? "Saving..." : "Set NPL"}
             </button>
             <button className="btn btn-sm btn-circle btn-ghost" onClick={() => setSelectedIds([])}>✕</button>
           </div>
@@ -114,7 +106,7 @@ export default function EventsTable({ events }: { events: Event[] }) {
               <th className="text-center">Type</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className={isPending ? "opacity-50 pointer-events-none" : ""}>
             {!events?.length ? (
               <tr>
                 <td colSpan={5} className="text-center py-8 text-base-content/50 italic">
@@ -145,7 +137,6 @@ export default function EventsTable({ events }: { events: Event[] }) {
                         {e.start_date ? new Date(e.start_date).toLocaleDateString("en-GB") : "—"}
                     </td>
                     <td className="align-top">
-                      {/* FIX: Removed max-w and truncate, added min-w to ensure readability */}
                       <div className="font-bold text-white min-w-[200px] leading-tight">
                         {e.name}
                       </div>

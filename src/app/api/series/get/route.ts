@@ -6,10 +6,16 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const id = searchParams.get("id");
+  const idParam = searchParams.get("id");
 
-  if (!id) {
+  if (!idParam) {
     return NextResponse.json({ ok: false, error: "Missing ID" }, { status: 400 });
+  }
+
+  // FIX: Convert string param to number
+  const id = Number(idParam);
+  if (isNaN(id)) {
+    return NextResponse.json({ ok: false, error: "Invalid ID" }, { status: 400 });
   }
 
   const supabase = await createSupabaseRouteClient();
@@ -18,7 +24,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await supabase
     .from("series")
     .select("*")
-    .eq("id", id)
+    .eq("id", id) // Now passing a number
     .single();
 
   if (error) {

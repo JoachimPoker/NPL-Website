@@ -1,106 +1,334 @@
-import Link from "next/link";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
-import { redirect } from "next/navigation";
+"use client";
 
-export const runtime = "nodejs";
-export const revalidate = 0;
+import { useEffect, useState } from "react";
 
-export default async function AdminSeasonsListPage() {
-  const supabase = await createSupabaseServerClient();
+// ✅ Type definition matches your actual 'seasons' table
+type Season = {
+  id: number;
+  label: string;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  created_at?: string;
+};
 
-  // 1. Auth Check
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+type ListResp = { seasons: Season[]; _error?: string };
 
-  // 2. Fetch Seasons
-  const { data: seasons, error } = await supabase
-    .from("seasons")
-    .select("*")
-    .order("start_date", { ascending: false });
+const emptySeason: Omit<Season, "id" | "created_at"> = {
+  label: "",
+  start_date: "",
+  end_date: "",
+  is_active: false,
+};
 
-  if (error) {
-    console.error("Error fetching seasons:", error);
+export default function AdminSeasonsPage() {
+  const [list, setList] = useState<Season[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState<Partial<Season> | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+
+  async function fetchList() {
+    setLoading(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/admin/seasons/list", { cache: "no-store" });
+      const json = (await res.json()) as ListResp;
+      if (!res.ok) throw new Error(json._error || res.statusText);
+      setList(json.seasons || []);
+    } catch (e: any) {
+      setErr(e?.message || String(e));
+    } finally {
+      setLoading(false);
+    }
   }
 
+  useEffect(() => {
+    fetchList();
+  }, []);
+
+  const startCreate = () => {
+    setEditing({ ...emptySeason });
+    setOk(null);
+    setErr(null);
+  };
+
+  const startEdit = (s: Season) => {
+    setEditing({ ...s });
+    setOk(null);
+    setErr(null);
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+  };
+
+  const save = async () => {
+    if (!editing) return;
+    setLoading(true);
+    setErr(null);
+    setOk(null);
+    try {
+      // ✅ Only send fields that exist in the DB
+      const body = {
+        id: editing.id ?? null,
+        label: (editing.label || "").trim(),
+        start_date: editing.start_date,
+        end_date: editing.end_date,
+        is_active: !!editing.is_active,
+      };
+      
+      const res = await fetch("/api/admin/seasons/upsert", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json._error || res.statusText);
+      
+      setOk("Saved.");
+      setEditing(null);
+      fetchList();
+    } catch (e: any) {
+      setErr(e?.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setActive = async (id: number) => {
+    setLoading(true);
+    setErr(null);
+    setOk(null);
+    try {
+      const res = await fetch("/api/admin/seasons/set-active", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json._error || res.statusText);
+      setOk("Active season updated.");
+      fetchList();
+    } catch (e: any) {
+      setErr(e?.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const remove = async (id: number) => {
+    if (!confirm("Delete this season?")) return;
+    setLoading(true);
+    setErr(null);
+    setOk(null);
+    try {
+      const res = await fetch("/api/admin/seasons/delete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json._error || res.statusText);
+      setOk("Deleted.");
+      fetchList();
+    } catch (e: any) {
+      setErr(e?.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="container mx-auto max-w-5xl space-y-8 py-8 px-4">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/5 pb-6">
-        <div>
-          <div className="text-xs font-bold uppercase tracking-widest text-primary mb-1">Admin</div>
-          <h1 className="text-4xl font-black uppercase italic tracking-tighter text-white">
-            Manage Seasons
-          </h1>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-base-content/70">
+          Manage Seasons
         </div>
-        <div className="flex gap-2">
-            <Link href="/admin" className="btn btn-ghost btn-sm uppercase font-bold">
-              ← Dashboard
-            </Link>
-            <Link href="/admin/seasons/create" className="btn btn-primary btn-sm uppercase font-bold">
-              + New Season
-            </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={startCreate}
+            disabled={!!editing}
+          >
+            + New Season
+          </button>
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={fetchList}
+            disabled={loading}
+          >
+            Refresh
+          </button>
         </div>
       </div>
 
-      {/* Seasons List */}
-      <div className="card bg-base-100 shadow-xl border border-white/5 overflow-hidden">
-        <div className="p-0 overflow-x-auto">
-          <table className="table table-lg w-full">
-            <thead>
-              <tr className="bg-base-200/50 text-xs uppercase text-base-content/60 border-b border-white/5">
-                <th className="w-16">Status</th>
-                <th>Season Name</th>
-                <th>Dates</th>
-                <th>Scoring Rules</th>
-                <th className="text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!seasons?.length ? (
-                <tr>
-                  <td colSpan={5} className="text-center py-12 text-base-content/50 italic">
-                    No seasons found. Create your first season to get started.
-                  </td>
+      {err && (
+        <div className="alert alert-error text-sm">
+          <span>{err}</span>
+        </div>
+      )}
+      {ok && (
+        <div className="alert alert-success text-sm">
+          <span>{ok}</span>
+        </div>
+      )}
+
+      {/* Editor Form */}
+      {editing && (
+        <div className="card bg-base-100 shadow-sm border border-white/10">
+          <div className="card-body space-y-4">
+            <h3 className="font-bold text-lg">{editing.id ? "Edit Season" : "New Season"}</h3>
+            
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="label">
+                  <span className="label-text text-sm font-bold">Label</span>
+                </label>
+                <input
+                  className="input input-bordered input-sm w-full"
+                  value={editing.label || ""}
+                  onChange={(e) =>
+                    setEditing({ ...editing, label: e.target.value })
+                  }
+                  placeholder="e.g. Season 2024"
+                />
+              </div>
+
+              <div className="flex items-end justify-end pb-2">
+                <label className="label cursor-pointer gap-2">
+                  <span className="label-text text-sm">Is Active?</span>
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-sm"
+                    checked={editing.is_active || false}
+                    onChange={(e) =>
+                      setEditing({ ...editing, is_active: e.target.checked })
+                    }
+                  />
+                </label>
+              </div>
+
+              <div>
+                <label className="label">
+                  <span className="label-text text-sm font-bold">Start Date</span>
+                </label>
+                <input
+                  type="date"
+                  className="input input-bordered input-sm w-full"
+                  value={editing.start_date || ""}
+                  onChange={(e) =>
+                    setEditing({ ...editing, start_date: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label className="label">
+                  <span className="label-text text-sm font-bold">End Date</span>
+                </label>
+                <input
+                  type="date"
+                  className="input input-bordered input-sm w-full"
+                  value={editing.end_date || ""}
+                  onChange={(e) =>
+                    setEditing({ ...editing, end_date: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 mt-4">
+              <button
+                className="btn btn-primary btn-sm"
+                type="button"
+                onClick={save}
+                disabled={loading}
+              >
+                Save Changes
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                type="button"
+                onClick={cancelEdit}
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              
+              {editing.id ? (
+                <div className="ml-auto flex gap-2">
+                   {!editing.is_active && (
+                      <button
+                        className="btn btn-outline btn-sm"
+                        type="button"
+                        onClick={() => editing.id && setActive(editing.id)}
+                        disabled={loading}
+                      >
+                        Set Active
+                      </button>
+                   )}
+                   <button
+                    className="btn btn-error btn-outline btn-sm"
+                    type="button"
+                    onClick={() => editing.id && remove(editing.id)}
+                    disabled={loading}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* List Table */}
+      <div className="card overflow-hidden bg-base-100 shadow-sm border border-white/5">
+        <div className="card-body p-0 overflow-x-auto">
+          {loading && !list.length ? (
+            <p className="p-4 text-sm text-base-content/70">Loading…</p>
+          ) : !list.length ? (
+            <p className="p-4 text-sm text-base-content/70">No seasons found.</p>
+          ) : (
+            <table className="table table-sm w-full">
+              <thead>
+                <tr className="bg-base-200/50">
+                  <th className="text-left">Label</th>
+                  <th className="text-left">Dates</th>
+                  <th className="text-center">Active</th>
+                  <th className="text-right">Actions</th>
                 </tr>
-              ) : (
-                seasons.map((s) => (
-                  <tr key={s.id} className="hover:bg-base-200/30 transition-colors border-b border-white/5 last:border-0">
-                    <td>
-                        {s.is_active ? (
-                            <div className="badge badge-success badge-sm font-bold animate-pulse">ACTIVE</div>
-                        ) : (
-                            <div className="badge badge-ghost badge-sm opacity-50">PAST</div>
-                        )}
+              </thead>
+              <tbody>
+                {list.map((s) => (
+                  <tr key={s.id} className="hover:bg-base-200/20">
+                    <td className="font-medium text-white">{s.label}</td>
+                    <td className="text-xs font-mono opacity-70">
+                      {s.start_date} → {s.end_date}
                     </td>
-                    <td>
-                      <div className="font-bold text-white text-lg">{s.label}</div>
-                    </td>
-                    <td className="font-mono text-xs opacity-70">
-                        {new Date(s.start_date).toLocaleDateString()} → {new Date(s.end_date).toLocaleDateString()}
-                    </td>
-                    <td>
-                        <div className="flex flex-col text-xs">
-                            <span className="font-bold uppercase tracking-wide opacity-80">
-                                {s.scoring_method === 'capped' ? 'Capped Score' : 'Total Accumulator'}
-                            </span>
-                            {s.scoring_method === 'capped' && (
-                                <span className="opacity-50">Best {s.scoring_cap} results count</span>
-                            )}
-                        </div>
+                    <td className="text-center">
+                      {s.is_active ? (
+                        <span className="badge badge-success badge-xs">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="opacity-20">—</span>
+                      )}
                     </td>
                     <td className="text-right">
-                      <Link 
-                        href={`/admin/seasons/${s.id}`} 
-                        className="btn btn-sm btn-outline uppercase font-bold"
+                      <button
+                        className="btn btn-ghost btn-xs uppercase font-bold"
+                        type="button"
+                        onClick={() => startEdit(s)}
                       >
                         Edit
-                      </Link>
+                      </button>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>

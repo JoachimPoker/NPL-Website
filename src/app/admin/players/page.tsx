@@ -22,9 +22,10 @@ export default async function AdminPlayersPage(props: {
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
+  // FIX: Removed 'email' from this select string to fix the type error
   let query = supabase
     .from("players")
-    .select("id, forename, surname, display_name, email, created_at", { count: "exact" })
+    .select("id, forename, surname, display_name, created_at", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(from, to);
 
@@ -72,7 +73,7 @@ export default async function AdminPlayersPage(props: {
             <thead>
               <tr className="bg-base-200/50 text-xs uppercase text-base-content/60 border-b border-white/5">
                 <th>Name / Display Name</th>
-                <th className="hidden sm:table-cell">Contact</th>
+                {/* REMOVED: Contact/Email Column Header */}
                 <th className="hidden md:table-cell">Joined</th>
                 <th className="text-right">Actions</th>
               </tr>
@@ -80,7 +81,7 @@ export default async function AdminPlayersPage(props: {
             <tbody>
               {!players?.length ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-base-content/50 italic">
+                  <td colSpan={3} className="text-center py-8 text-base-content/50 italic">
                     No players found.
                   </td>
                 </tr>
@@ -97,9 +98,7 @@ export default async function AdminPlayersPage(props: {
                         </div>
                       )}
                     </td>
-                    <td className="hidden sm:table-cell text-sm opacity-70">
-                      {p.email || "—"}
-                    </td>
+                    {/* REMOVED: Email Cell */}
                     <td className="hidden md:table-cell font-mono text-xs opacity-50">
                       {new Date(p.created_at).toLocaleDateString()}
                     </td>

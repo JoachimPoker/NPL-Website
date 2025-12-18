@@ -1,83 +1,118 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function AdminTools() {
-  const [snapping, setSnapping] = useState(false);
-  const [wiping, setWiping] = useState(false);
-  const router = useRouter();
-
-  const handleSnapshot = async () => {
-    setSnapping(true);
-    try {
-      const res = await fetch("/api/admin/snapshot", { method: "POST" });
-      const json = await res.json();
-      if (json.ok) alert("✅ Snapshot saved! Leaderboards updated.");
-      else alert("❌ Error: " + json.error);
-    } catch (e) { alert("Connection Error"); }
-    setSnapping(false);
-  };
+  const [loading, setLoading] = useState(false);
+  const [options, setOptions] = useState({
+    results: true,
+    events: true,
+    players: true,
+    seasons: false,
+    festivals: false,
+  });
 
   const handleReset = async () => {
-    if (!confirm("⚠️ DANGER ZONE ⚠️\n\nThis will delete ALL players, events, results, and seasons.\n\nAre you sure?")) return;
-    if (!confirm("This cannot be undone. Click OK to wipe everything.")) return;
+    // Final safety check
+    const selectedKeys = Object.entries(options)
+      .filter(([_, val]) => val)
+      .map(([key]) => key);
+
+    if (selectedKeys.length === 0) return alert("Please select at least one item to delete.");
     
-    setWiping(true);
+    const confirmMsg = `DANGER: You are about to delete: ${selectedKeys.join(", ")}. This cannot be undone. Proceed?`;
+    if (!confirm(confirmMsg)) return;
+
+    setLoading(true);
     try {
-      const res = await fetch("/api/admin/reset-db", { method: "POST" });
-      if (res.ok) {
-        alert("♻️ Database wiped clean.");
-        router.refresh();
-      } else {
-        alert("Error wiping database.");
-      }
-    } catch (e) { alert("Connection Error"); }
-    setWiping(false);
+      const res = await fetch("/api/admin/reset-db", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ options }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Reset failed");
+
+      alert("Selection cleared successfully.");
+      window.location.reload();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {/* SNAPSHOT */}
-      <div className="card bg-base-100 shadow-xl border border-warning/20">
-        <div className="card-body p-6">
-          <h3 className="card-title text-base font-bold uppercase tracking-widest text-warning flex items-center gap-2">
-            📸 Manual Override
-          </h3>
-          <p className="text-xs text-base-content/60">
-            Force a leaderboard snapshot. Use this if you edited results manually and want arrows to update immediately.
-          </p>
-          <div className="card-actions justify-end mt-4">
-            <button 
-                onClick={handleSnapshot}
-                disabled={snapping}
-                className="btn btn-sm btn-outline btn-warning w-full sm:w-auto"
-            >
-                {snapping ? <span className="loading loading-spinner loading-xs"></span> : "Update Standings"}
-            </button>
+    <div className="card bg-base-100 shadow-xl border border-error/20">
+      <div className="card-body">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-12 h-12 rounded-lg bg-error/10 flex items-center justify-center text-2xl">
+            ⚠️
+          </div>
+          <div>
+            <h3 className="text-lg font-bold">Danger Zone</h3>
+            <p className="text-xs text-base-content/60">Maintain and clean the system database.</p>
           </div>
         </div>
-      </div>
 
-      {/* DANGER ZONE */}
-      <div className="card bg-error/5 shadow-xl border border-error/20">
-        <div className="card-body p-6">
-          <h3 className="card-title text-base font-bold uppercase tracking-widest text-error flex items-center gap-2">
-            💀 Danger Zone
-          </h3>
-          <p className="text-xs text-error/60">
-            Nuclear option. Wipes all data to start a fresh season or test run.
-          </p>
-          <div className="card-actions justify-end mt-4">
-            <button 
+        {/* This button now opens the modal instead of resetting immediately */}
+        <button 
+          className="btn btn-error btn-outline btn-block"
+          onClick={() => (document.getElementById("reset_modal") as any).showModal()}
+        >
+          Open Database Reset Tool
+        </button>
+
+        {/* MODAL WINDOW */}
+        <dialog id="reset_modal" className="modal">
+          <div className="modal-box border border-white/10 shadow-2xl">
+            <h3 className="font-black text-xl uppercase tracking-tighter text-error mb-4">Granular Database Reset</h3>
+            <p className="text-sm opacity-70 mb-6">Select exactly what you want to remove. Items not checked will be preserved.</p>
+
+            <div className="space-y-3">
+              <label className="flex items-center justify-between p-3 bg-base-200 rounded-lg cursor-pointer hover:bg-base-300 transition-colors">
+                <span className="font-bold text-sm">Results & Positions</span>
+                <input type="checkbox" className="checkbox checkbox-error" checked={options.results} onChange={() => setOptions({...options, results: !options.results})} />
+              </label>
+
+              <label className="flex items-center justify-between p-3 bg-base-200 rounded-lg cursor-pointer hover:bg-base-300 transition-colors">
+                <span className="font-bold text-sm">Events (Tournament Logs)</span>
+                <input type="checkbox" className="checkbox checkbox-error" checked={options.events} onChange={() => setOptions({...options, events: !options.events})} />
+              </label>
+
+              <label className="flex items-center justify-between p-3 bg-base-200 rounded-lg cursor-pointer hover:bg-base-300 transition-colors">
+                <span className="font-bold text-sm">Players & Aliases</span>
+                <input type="checkbox" className="checkbox checkbox-error" checked={options.players} onChange={() => setOptions({...options, players: !options.players})} />
+              </label>
+
+              <div className="divider opacity-10">CORE STRUCTURE</div>
+
+              <label className="flex items-center justify-between p-3 bg-error/5 border border-error/10 rounded-lg cursor-pointer hover:bg-error/10 transition-colors">
+                <span className="font-bold text-sm text-error">Seasons & Leagues</span>
+                <input type="checkbox" className="checkbox checkbox-error" checked={options.seasons} onChange={() => setOptions({...options, seasons: !options.seasons})} />
+              </label>
+
+              <label className="flex items-center justify-between p-3 bg-error/5 border border-error/10 rounded-lg cursor-pointer hover:bg-error/10 transition-colors">
+                <span className="font-bold text-sm text-error">Festivals & Series</span>
+                <input type="checkbox" className="checkbox checkbox-error" checked={options.festivals} onChange={() => setOptions({...options, festivals: !options.festivals})} />
+              </label>
+            </div>
+
+            <div className="modal-action mt-8">
+              <form method="dialog">
+                <button className="btn btn-ghost">Cancel</button>
+              </form>
+              <button 
+                className="btn btn-error px-8" 
                 onClick={handleReset}
-                disabled={wiping}
-                className="btn btn-sm btn-error text-white w-full sm:w-auto"
-            >
-                {wiping ? "Deleting..." : "Reset Database"}
-            </button>
+                disabled={loading}
+              >
+                {loading ? "Wiping..." : "Execute Reset"}
+              </button>
+            </div>
           </div>
-        </div>
+        </dialog>
       </div>
     </div>
   );

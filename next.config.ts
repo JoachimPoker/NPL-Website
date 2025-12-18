@@ -1,11 +1,22 @@
-// next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
     serverActions: {
-      // Applies to App Router route handlers & server actions
-      bodySizeLimit: '100mb',   // pick a size that matches your files, e.g. 50mb/100mb
+      bodySizeLimit: '100mb',
     },
+  },
+  images: {
+    dangerouslyAllowSVG: true, // Required for DiceBear SVGs
+    contentDispositionType: 'attachment',
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'api.dicebear.com',
+        port: '',
+        pathname: '/7.x/**', // Matches the version used in your code
+      },
+    ],
   },
 };
 

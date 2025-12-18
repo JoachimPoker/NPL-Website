@@ -18,7 +18,7 @@ type LbRow = {
 
 type HomeResp = {
   ok: true;
-  season_meta: { id: number; label: string; start_date: string; end_date: string };
+  season_meta: { id: number; label: string; start_date: string; end_date: string; cap_x: number };
   leagues: { slug: string, label: string }[];
   leaderboards: Record<string, LbRow[]>; 
   upcoming_events: Array<{ id: string; name: string; start_date: string }>;
@@ -42,18 +42,17 @@ function AnnouncementBar() {
 function Hero() {
   return (
     <div className="relative w-full h-[400px] bg-neutral overflow-hidden">
-      {/* Background Image (Anchored Right) */}
       <div 
         className="absolute inset-0 bg-cover bg-right bg-no-repeat opacity-50"
         style={{ backgroundImage: 'url(/poker-hero.jpg)' }} 
       ></div>
-      
-      {/* Gradient Overlay (Left to Right) */}
       <div className="absolute inset-0 bg-gradient-to-r from-base-100 via-base-100/90 to-transparent"></div>
 
-      {/* Content Content */}
       <div className="relative z-10 mx-auto h-full max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col justify-center">
         <div className="max-w-xl space-y-6">
+          <div className="inline-block px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold uppercase tracking-widest">
+            Unofficial Fan Site
+          </div>
           <h1 className="text-5xl md:text-6xl font-black uppercase italic tracking-tighter text-white leading-[0.9]">
             The Future <br/> of Poker <span className="text-primary">Is Here.</span>
           </h1>
@@ -82,11 +81,8 @@ export default async function HomePage() {
   if (!res.ok) return <div className="p-8 text-center">Failed to load data.</div>;
   const data = (await res.json()) as HomeResp;
 
-  // Use the "Global" or "NPL" league (or the first one available) for the Bubble Watch widget
   const mainLeagueSlug = data.leagues.find(l => l.slug === 'global' || l.slug === 'npl')?.slug || data.leagues[0]?.slug;
   const mainData = data.leaderboards[mainLeagueSlug] || [];
-  
-  // Get ranks 19-23 for Bubble Watch (Indices 18-23)
   const bubblePlayers = mainData.slice(18, 23);
 
   return (
@@ -94,23 +90,19 @@ export default async function HomePage() {
       <AnnouncementBar />
       <Hero />
 
-      {/* Main Content Area (2-Column Grid) */}
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* LEFT COLUMN (Wide, ~65%) */}
           <div className="lg:col-span-8 space-y-8">
             <HomeLeaderboard 
                 leagues={data.leagues}
                 leaderboards={data.leaderboards} 
-                seasonLabel={data.season_meta.label} 
+                seasonLabel={data.season_meta.label}
+                cap={data.season_meta.cap_x || 0}
             />
           </div>
 
-          {/* RIGHT COLUMN (Narrow, ~35%) */}
           <div className="lg:col-span-4 space-y-6">
-            
-            {/* 1. Trending Players */}
             <div className="card bg-base-100 shadow-lg border border-white/5 p-5">
               <h4 className="text-sm font-bold uppercase tracking-widest text-base-content/50 mb-4 flex items-center gap-2">
                 🔥 Trending Players
@@ -127,7 +119,6 @@ export default async function HomePage() {
               </ul>
             </div>
 
-            {/* 2. Biggest Gainers */}
             <div className="card bg-base-100 shadow-lg border border-white/5 p-5">
               <h4 className="text-sm font-bold uppercase tracking-widest text-base-content/50 mb-4 flex items-center gap-2">
                 🚀 Biggest Movers (Week)
@@ -151,7 +142,6 @@ export default async function HomePage() {
               </ul>
             </div>
 
-            {/* 3. The Bubble Watch (19th - 23rd) */}
             <div className="card bg-warning/10 shadow-lg border border-warning/20 p-5">
               <h4 className="text-sm font-bold uppercase tracking-widest text-warning mb-4 flex items-center gap-2">
                 ⚠️ The Bubble Watch
@@ -173,7 +163,7 @@ export default async function HomePage() {
                             <Link href={`/players/${p.player_id}`} className="hover:text-warning transition-colors">{p.display_name}</Link>
                          )}
                       </div>
-                      <span className="font-mono opacity-60">{Number(p.total_points).toFixed(1)}</span>
+                      <span className="font-mono opacity-60 font-bold">{Number(p.total_points).toFixed(1)}</span>
                     </li>
                   ))
                 )}

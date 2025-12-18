@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 
 function RankMovement({ move }: { move?: number }) {
-  // If move is undefined, null, or 0, show the dash
+  // We must handle the number 0 specifically
   if (move === undefined || move === null || move === 0) {
     return <span className="text-xs font-bold text-base-content/20 flex items-center justify-center">—</span>;
   }

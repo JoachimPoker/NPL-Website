@@ -17,7 +17,7 @@ type LbRow = {
 };
 
 type HomeResp = {
-  ok: true;
+  ok: boolean; // Changed to boolean to allow false checks
   season_meta: { id: number; label: string; start_date: string; end_date: string; cap_x: number };
   leagues: { slug: string, label: string }[];
   leaderboards: Record<string, LbRow[]>; 
@@ -79,10 +79,20 @@ export default async function HomePage() {
   const res = await fetch(`${base}/api/home`, { cache: "no-store" }); 
   
   if (!res.ok) return <div className="p-8 text-center">Failed to load data.</div>;
+  
   const data = (await res.json()) as HomeResp;
 
+  // SAFETY CHECK: Ensure data structure exists before accessing properties
+  if (!data || !data.ok || !data.leagues) {
+     return <div className="p-10 text-center">Leaderboard service unavailable.</div>;
+  }
+
   const mainLeagueSlug = data.leagues.find(l => l.slug === 'global' || l.slug === 'npl')?.slug || data.leagues[0]?.slug;
-  const mainData = data.leaderboards[mainLeagueSlug] || [];
+  
+  // Use optional chaining and default empty arrays for safety
+  const mainData = data.leaderboards?.[mainLeagueSlug] || [];
+  const trendingPlayers = data.trending_players || [];
+  const biggestGainers = data.biggest_gainers || [];
   const bubblePlayers = mainData.slice(18, 23);
 
   return (
@@ -97,8 +107,8 @@ export default async function HomePage() {
             <HomeLeaderboard 
                 leagues={data.leagues}
                 leaderboards={data.leaderboards} 
-                seasonLabel={data.season_meta.label}
-                cap={data.season_meta.cap_x || 0}
+                seasonLabel={data.season_meta?.label || "Current Season"}
+                cap={data.season_meta?.cap_x || 0}
             />
           </div>
 
@@ -108,7 +118,7 @@ export default async function HomePage() {
                 🔥 Trending Players
               </h4>
               <ul className="space-y-3">
-                {data.trending_players.slice(0, 5).map((p, i) => (
+                {trendingPlayers.slice(0, 5).map((p, i) => (
                   <li key={p.player_id} className="flex items-center justify-between group cursor-pointer">
                     <Link href={`/players/${p.player_id}`} className="flex items-center gap-3">
                       <span className="text-lg font-black text-base-content/20 group-hover:text-primary transition-colors">0{i+1}</span>
@@ -124,10 +134,10 @@ export default async function HomePage() {
                 🚀 Biggest Movers (Week)
               </h4>
               <ul className="space-y-3">
-                {data.biggest_gainers.length === 0 ? (
+                {biggestGainers.length === 0 ? (
                   <div className="text-sm text-base-content/40 italic">No movement recorded yet.</div>
                 ) : (
-                  data.biggest_gainers.slice(0, 5).map((g) => (
+                  biggestGainers.slice(0, 5).map((g) => (
                     <li key={g.player_id} className="flex items-center justify-between">
                       <Link href={`/players/${g.player_id}`} className="font-semibold hover:text-primary truncate max-w-[150px]">
                         {g.display_name}

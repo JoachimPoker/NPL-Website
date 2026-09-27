@@ -1,15 +1,32 @@
 // src/app/layout.tsx
 import "./globals.css";
-import { Inter } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
+import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import Providers from "./providers";
 import SiteHeader from "@/components/SiteHeader";
+import SiteFooter from "@/components/SiteFooter";
 
-const inter = Inter({ subsets: ["latin"] });
+const heading = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-heading" });
+const body = Geist({ subsets: ["latin"], variable: "--font-body" });
+const numbers = Geist_Mono({ subsets: ["latin"], variable: "--font-numbers" });
 
-export const metadata = {
-  title: "National Poker League",
-  description: "Leaderboards and stats for the NPL",
+const DESCRIPTION =
+  "Season standings, tournament results and player stats for the National Poker League.";
+
+export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: SITE_NAME,
+    template: `%s · ${SITE_NAME}`,
+  },
+  description: DESCRIPTION,
+  applicationName: SITE_NAME,
+  openGraph: { title: SITE_NAME, description: DESCRIPTION, siteName: SITE_NAME, type: "website", locale: "en_GB" },
+  twitter: { card: "summary_large_image", title: SITE_NAME, description: DESCRIPTION },
 };
+
+export const viewport: Viewport = { themeColor: "#1c173d", colorScheme: "dark" };
 
 export default function RootLayout({
   children,
@@ -17,15 +34,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    // Data-theme "dim" gives that professional dark blue-grey look
-    <html lang="en" data-theme="dim">
-      <body className={`${inter.className} min-h-screen bg-base-100 text-base-content antialiased flex flex-col`}>
+    <html lang="en" data-theme="npl" className={`${heading.variable} ${body.variable} ${numbers.variable}`}>
+      <body className="font-sans min-h-screen bg-base-200 text-base-content antialiased flex flex-col">
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-content"
+        >
+          Skip to content
+        </a>
         <Providers>
           <SiteHeader />
-          {/* Main content expands to fill space, but formatting is handled per-page now */}
-          <main className="flex-1 flex flex-col">
+          <main id="main" className="flex-1 flex flex-col">
             {children}
           </main>
+          <SiteFooter />
         </Providers>
       </body>
     </html>

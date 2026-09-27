@@ -1,16 +1,16 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseRouteClient } from '@/lib/supabaseServer'
+import { isAdminUser } from '@/lib/isAdmin'
 
 export async function GET(req: Request) {
   const supabase = await createSupabaseRouteClient()
   const { data: ures } = await supabase.auth.getUser()
-  const roles: string[] = ((ures?.user?.app_metadata as any)?.roles ?? []) as string[]
-  const isAdmin = !!ures?.user && (roles.includes('admin') || (ures.user?.user_metadata as any)?.is_admin === true)
+  const isAdmin = isAdminUser(ures?.user)
   if (!isAdmin) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
 
   const url = new URL(req.url)
-  const player_id = (url.searchParams.get('player_id') || '').trim()
-  if (!player_id) return NextResponse.json({ ok: false, error: 'player_id required' }, { status: 400 })
+  const player_id = Number(url.searchParams.get('player_id'))
+  if (!Number.isFinite(player_id) || player_id <= 0) return NextResponse.json({ ok: false, error: 'player_id required' }, { status: 400 })
 
   const { data, error } = await supabase
     .from('player_aliases')

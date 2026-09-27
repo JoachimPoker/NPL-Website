@@ -40,7 +40,7 @@ export async function updatePlayerAction(formData: FormData) {
   const { error } = await supabase
     .from("players")
     .update(updates)
-    .eq("id", id);
+    .eq("id", Number(id));
 
   if (error) {
     console.error("Update Player Error:", error);
@@ -70,7 +70,7 @@ export async function deletePlayerAction(formData: FormData) {
   const { error } = await supabase
     .from("players")
     .delete()
-    .eq("id", id);
+    .eq("id", Number(id));
 
   if (error) {
     console.error("Delete Player Error:", error);

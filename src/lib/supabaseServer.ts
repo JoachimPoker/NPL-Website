@@ -1,23 +1,21 @@
 import { cookies } from "next/headers";
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { Database } from '@/types/supabase'; // <--- Import this
+import { createServerClient } from "@supabase/ssr";
+import { Database } from '@/types/supabase';
 
+// For Server Components: cookies are read-only there, so writes are ignored.
+// Session refresh is handled in src/proxy.ts.
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
-  
-  // Add <Database> here
+
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        getAll() {
+          return cookieStore.getAll();
         },
-        set(_name: string, _value: string, _options: CookieOptions) {
-          // no-op in RSC
-        },
-        remove(_name: string, _options: CookieOptions) {
+        setAll() {
           // no-op in RSC
         },
       },
@@ -25,23 +23,22 @@ export async function createSupabaseServerClient() {
   );
 }
 
+// For Route Handlers and Server Actions, where cookies can be written.
 export async function createSupabaseRouteClient() {
   const cookieStore = await cookies();
-  
-  // Add <Database> here
+
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        getAll() {
+          return cookieStore.getAll();
         },
-        set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options });
-        },
-        remove(name: string, options: CookieOptions) {
-          cookieStore.set({ name, value: "", ...options });
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options)
+          );
         },
       },
     }

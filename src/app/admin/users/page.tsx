@@ -63,7 +63,7 @@ export default function AdminUsersPage() {
     <div className="space-y-6">
       {/* Local toolbar (top-level admin header comes from /admin/layout.tsx) */}
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Admin — Users</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">Admin — Users</h1>
         <button
           className="btn btn-outline btn-sm"
           onClick={() => void load()}
@@ -85,7 +85,7 @@ export default function AdminUsersPage() {
         </div>
       )}
 
-      <div className="card bg-base-100 shadow-sm overflow-x-auto">
+      <div className="panel overflow-x-auto">
         <div className="card-body p-0">
           <table className="table table-sm w-full">
             <thead>

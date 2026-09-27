@@ -22,11 +22,12 @@ export default async function AdminPlayersPage(props: {
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
-  // FIX: Removed 'email' from this select string to fix the type error
+  // Admins see real names (and consent) here; the public site masks players without consent.
   let query = supabase
     .from("players")
-    .select("id, forename, surname, display_name, created_at", { count: "exact" })
-    .order("created_at", { ascending: false })
+    .select("id, forename, surname, display_name, gdpr, lifetime_cashes, lifetime_money_won", { count: "exact" })
+    .order("lifetime_money_won", { ascending: false, nullsFirst: false })
+    .order("id")
     .range(from, to);
 
   if (q) {
@@ -37,78 +38,63 @@ export default async function AdminPlayersPage(props: {
   const total = count || 0;
   const totalPages = Math.ceil(total / pageSize);
 
+  const gbp = (n: number | null) => (n ? `£${Math.round(n).toLocaleString("en-GB")}` : "–");
+
   return (
-    <div className="container mx-auto max-w-7xl space-y-8 py-8 px-4">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-b border-white/5 pb-6">
-        <div>
-          <div className="text-xs font-bold uppercase tracking-widest text-primary mb-1">Admin</div>
-          <h1 className="text-4xl font-black uppercase italic tracking-tighter text-white">
-            Manage Players
-          </h1>
-        </div>
-        <Link href="/admin" className="btn btn-ghost btn-sm uppercase font-bold">
-          ← Back to Dashboard
-        </Link>
+    <div className="mx-auto w-full max-w-7xl space-y-8 px-4 py-10 sm:px-6 lg:px-8">
+      <div className="border-b border-base-content/[0.07] pb-6">
+        <div className="eyebrow mb-2 text-primary">Admin</div>
+        <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">Players</h1>
+        <p className="max-w-2xl text-sm text-base-content/60">
+          Everyone in the reports, biggest winners first. Players without GDPR consent are shown by initials on the site.
+        </p>
       </div>
 
-      {/* Search Bar */}
-      <div className="card bg-base-100 shadow-lg border border-white/5 p-4">
-        <form className="flex gap-2">
-          <input 
-            name="q" 
-            defaultValue={q} 
-            placeholder="Search by name..." 
-            className="input input-bordered input-sm w-full max-w-md bg-base-200/50 focus:bg-base-200" 
-          />
-          <button className="btn btn-primary btn-sm uppercase font-bold">Search</button>
-          {q && <Link href="/admin/players" className="btn btn-ghost btn-sm uppercase">Clear</Link>}
-        </form>
-      </div>
+      <form className="flex flex-wrap gap-2">
+        <input
+          name="q"
+          defaultValue={q}
+          placeholder="Search by name…"
+          className="input input-bordered input-sm w-full max-w-md"
+          aria-label="Search players"
+        />
+        <button className="btn btn-primary btn-sm">Search</button>
+        {q && <Link href="/admin/players" className="btn btn-ghost btn-sm">Clear</Link>}
+      </form>
 
-      {/* Table Card */}
-      <div className="card bg-base-100 shadow-xl border border-white/5 overflow-hidden">
-        <div className="p-0 overflow-x-auto">
-          <table className="table table-lg w-full">
+      <div className="panel overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="table w-full">
             <thead>
-              <tr className="bg-base-200/50 text-xs uppercase text-base-content/60 border-b border-white/5">
-                <th>Name / Display Name</th>
-                {/* REMOVED: Contact/Email Column Header */}
-                <th className="hidden md:table-cell">Joined</th>
-                <th className="text-right">Actions</th>
+              <tr>
+                <th className="pl-6">Player</th>
+                <th className="hidden text-right sm:table-cell">Cashes</th>
+                <th className="hidden text-right sm:table-cell">Winnings</th>
+                <th className="text-center">Consent</th>
+                <th className="pr-6 text-right"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
               {!players?.length ? (
                 <tr>
-                  <td colSpan={3} className="text-center py-8 text-base-content/50 italic">
-                    No players found.
-                  </td>
+                  <td colSpan={5} className="py-10 text-center text-sm text-base-content/50">No players found.</td>
                 </tr>
               ) : (
                 players.map((p) => (
-                  <tr key={p.id} className="hover:bg-base-200/30 transition-colors border-b border-white/5 last:border-0">
-                    <td>
-                      <div className="font-bold text-white">
-                        {p.forename} {p.surname}
-                      </div>
-                      {p.display_name && (
-                        <div className="text-xs text-primary font-mono mt-0.5">
-                          aka {p.display_name}
-                        </div>
-                      )}
-                    </td>
-                    {/* REMOVED: Email Cell */}
-                    <td className="hidden md:table-cell font-mono text-xs opacity-50">
-                      {new Date(p.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="text-right">
-                      <Link 
-                        href={`/admin/players/${p.id}`} 
-                        className="btn btn-xs btn-outline uppercase font-bold"
-                      >
-                        Edit
+                  <tr key={p.id} className="transition-colors hover:bg-base-content/[0.03]">
+                    <td className="pl-6">
+                      <Link href={`/admin/players/${p.id}`} className="font-medium hover:text-primary">
+                        {[p.forename, p.surname].filter(Boolean).join(" ") || "Unknown player"}
                       </Link>
+                      {p.display_name && <div className="text-xs text-base-content/50">shown as {p.display_name}</div>}
+                    </td>
+                    <td className="hidden text-right font-mono text-sm sm:table-cell">{p.lifetime_cashes ?? 0}</td>
+                    <td className="hidden text-right font-mono text-sm sm:table-cell">{gbp(p.lifetime_money_won)}</td>
+                    <td className="text-center">
+                      {p.gdpr ? <span className="text-success">✓</span> : <span className="text-xs text-base-content/40">initials</span>}
+                    </td>
+                    <td className="pr-6 text-right">
+                      <Link href={`/admin/players/${p.id}`} className="btn btn-ghost btn-xs">Edit</Link>
                     </td>
                   </tr>
                 ))
@@ -117,24 +103,21 @@ export default async function AdminPlayersPage(props: {
           </table>
         </div>
 
-        {/* Pagination */}
-        <div className="card-footer bg-base-200/20 p-4 border-t border-white/5 flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-widest text-base-content/40">
-            {total} Records
-          </span>
+        <div className="flex items-center justify-between border-t border-base-content/[0.07] px-6 py-3">
+          <span className="text-xs text-base-content/50">{total.toLocaleString("en-GB")} players</span>
           <div className="join">
-            <Link 
-              href={`?q=${q}&page=${page - 1}`} 
-              className={`join-item btn btn-xs btn-outline ${page <= 1 ? "btn-disabled" : ""}`}
+            <Link
+              href={`?q=${encodeURIComponent(q)}&page=${page - 1}`}
+              className={`join-item btn btn-xs btn-ghost ${page <= 1 ? "btn-disabled" : ""}`}
+              aria-label="Previous page"
             >
               «
             </Link>
-            <button className="join-item btn btn-xs btn-ghost no-animation">
-              Page {page}
-            </button>
-            <Link 
-              href={`?q=${q}&page=${page + 1}`} 
-              className={`join-item btn btn-xs btn-outline ${page >= totalPages ? "btn-disabled" : ""}`}
+            <span className="join-item btn btn-xs btn-ghost pointer-events-none">Page {page} of {Math.max(totalPages, 1)}</span>
+            <Link
+              href={`?q=${encodeURIComponent(q)}&page=${page + 1}`}
+              className={`join-item btn btn-xs btn-ghost ${page >= totalPages ? "btn-disabled" : ""}`}
+              aria-label="Next page"
             >
               »
             </Link>

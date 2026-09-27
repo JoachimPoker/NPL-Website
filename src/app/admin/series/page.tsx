@@ -1,134 +1,142 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { SeriesBanner } from "@/components/tournaments/TournamentCards";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { runAutoAssignAction, saveSeriesAction } from "./actions";
 
-export const runtime = "nodejs";
-export const revalidate = 0;
+export const dynamic = "force-dynamic";
 
-type SeriesRow = {
-  id: number;
-  name: string;
-  slug: string | null;
-  description: string | null;
-  is_active: boolean;
-  events: { count: number }[]; // Relation count
+type AssignResult = {
+  events_checked: number;
+  series_changed: number;
+  festival_changed: number;
+  festivals_created: number;
+  festivals_removed: number;
+  events_without_series: number;
 };
 
-async function requireAdmin() {
+export default async function AdminSeriesPage(props: { searchParams: Promise<{ assigned?: string }> }) {
+  const sp = await props.searchParams;
+  let assigned: AssignResult | null = null;
+  try { assigned = sp.assigned ? JSON.parse(sp.assigned) : null; } catch {}
+
   const supabase = await createSupabaseServerClient();
-  const { data } = await supabase.auth.getUser();
-  const user = data?.user;
-  if (!user) redirect(`/login?next=/admin/series`);
-  
-  // Basic Admin Check
-  const roles: string[] = ((user.app_metadata as any)?.roles ?? []) as string[];
-  const isAdmin = roles.includes("admin") || (user.user_metadata as any)?.is_admin === true;
-  
-  if (!isAdmin) redirect("/");
-  return supabase;
-}
-
-export default async function AdminSeriesPage(props: { searchParams: Promise<{ q?: string }> }) {
-  const searchParams = await props.searchParams;
-  const supabase = await requireAdmin();
-  const query = searchParams.q?.toLowerCase() || "";
-
-  // Fetch Series + Event Count
-  const { data, error } = await supabase
-    .from("series")
-    .select("*, events(count)")
-    .order("name", { ascending: true });
-
-  if (error) return <div className="alert alert-error">Error: {error.message}</div>;
-
-  const rows = (data as any[]).filter((s) => 
-    !query || s.name.toLowerCase().includes(query) || s.slug?.toLowerCase().includes(query)
-  );
+  const [{ data: series }, { data: unassigned, count: unassignedCount }] = await Promise.all([
+    supabase
+      .from("series")
+      .select("id, name, slug, match_pattern, has_festivals, is_active, logo_url, sort_order, events(count), festivals(count)")
+      .order("sort_order")
+      .order("name"),
+    supabase
+      .from("events")
+      .select("id, tournament_name, casino, start_date", { count: "exact" })
+      .is("series_id", null)
+      .eq("is_deleted", false)
+      .order("start_date", { ascending: false })
+      .limit(25),
+  ]);
 
   return (
-    <div className="container mx-auto max-w-7xl py-8 px-4 space-y-8">
-      
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-b border-white/5 pb-6">
+    <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
+      <div className="flex flex-col gap-4 border-b border-base-content/[0.07] pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="text-xs font-bold uppercase tracking-widest text-primary mb-1">Admin Dashboard</div>
-          <h1 className="text-4xl font-black uppercase italic tracking-tighter text-white">
-            Series Manager
-          </h1>
+          <div className="eyebrow mb-2 text-primary">Admin</div>
+          <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">Series &amp; Festivals</h1>
+          <p className="max-w-2xl text-sm text-base-content/60">
+            Events are put into a series automatically when their name matches the series&apos; pattern, and grouped
+            into festivals (same series, same casino, consecutive days). This runs after every import. Changes you
+            make on an event&apos;s page are kept.
+          </p>
         </div>
-        <div className="flex gap-3">
-            {/* Search Input (Server Side via Form for simplicity, or could be client) */}
-            <form className="join">
-                <input 
-                    name="q" 
-                    defaultValue={query} 
-                    className="input input-sm input-bordered join-item w-48" 
-                    placeholder="Search series..." 
-                />
-                <button type="submit" className="btn btn-sm btn-ghost border-base-content/20 join-item">🔍</button>
-            </form>
-            <Link href="/admin/series/new" className="btn btn-primary btn-sm uppercase font-bold tracking-widest shadow-lg shadow-primary/20">
-            + New Series
-            </Link>
-        </div>
+        <form action={runAutoAssignAction}>
+          <button className="btn btn-outline btn-sm">Re-run detection</button>
+        </form>
       </div>
 
-      {/* EMPTY STATE */}
-      {rows.length === 0 && (
-        <div className="text-center py-12 opacity-50">
-            <div className="text-4xl mb-2">📭</div>
-            <p>No series found matching your search.</p>
-            {query && <Link href="/admin/series" className="btn btn-link">Clear Search</Link>}
+      {assigned && (
+        <div role="status" className="alert alert-success text-sm">
+          Checked {assigned.events_checked} events: {assigned.series_changed} series and {assigned.festival_changed} festival
+          changes, {assigned.festivals_created} festivals created, {assigned.festivals_removed} removed.
+          {assigned.events_without_series > 0 && ` ${assigned.events_without_series} events have no series.`}
         </div>
       )}
 
-      {/* SERIES GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {rows.map((s) => (
-          <Link 
-            key={s.id} 
-            href={`/admin/series/${s.id}`}
-            className="group card bg-base-100 shadow-xl border border-white/5 hover:border-primary/50 hover:-translate-y-1 transition-all duration-300"
-          >
-            <div className="card-body p-6">
-              
-              <div className="flex justify-between items-start mb-2">
-                <div className="badge badge-xs font-mono opacity-50 uppercase tracking-wider">
-                    ID: {s.id}
-                </div>
-                {s.is_active ? (
-                    <span className="w-2 h-2 rounded-full bg-success shadow-[0_0_10px_rgba(34,197,94,0.5)]"></span>
-                ) : (
-                    <span className="w-2 h-2 rounded-full bg-base-content/20"></span>
-                )}
-              </div>
+      <div className="grid gap-8 lg:grid-cols-3">
+        <div className="panel lg:col-span-2 overflow-hidden">
+          <table className="table table-sm w-full">
+            <thead className="bg-base-200/50 text-[10px] uppercase">
+              <tr>
+                <th>Series</th>
+                <th className="hidden md:table-cell">Pattern</th>
+                <th className="text-right">Events</th>
+                <th className="text-right">Festivals</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(series || []).map((s: any) => (
+                <tr key={s.id} className={`hover:bg-base-200/30 ${s.is_active ? "" : "opacity-50"}`}>
+                  <td>
+                    <Link href={`/admin/series/${s.id}`} className="flex items-center gap-3 font-semibold hover:text-primary">
+                      {/* Fixed-width logo column so the names line up */}
+                      <span className="flex w-44 shrink-0 items-center">
+                        <SeriesBanner series={s} size="sm" />
+                      </span>
+                      {s.name}
+                    </Link>
+                    {!s.is_active && <span className="badge badge-ghost badge-xs ml-10">inactive</span>}
+                  </td>
+                  <td className="hidden max-w-xs truncate font-mono text-[11px] opacity-60 md:table-cell" title={s.match_pattern ?? ""}>
+                    {s.match_pattern || (
+                      <span className="">{s.slug === "others" ? "everything no other series claims" : "none: manual only"}</span>
+                    )}
+                  </td>
+                  <td className="text-right font-mono">{s.events?.[0]?.count ?? 0}</td>
+                  <td className="text-right font-mono">{s.has_festivals ? s.festivals?.[0]?.count ?? 0 : <span className="whitespace-nowrap opacity-40">single events</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-              <h3 className="card-title text-2xl font-bold group-hover:text-primary transition-colors">
-                {s.name}
-              </h3>
-              
-              <div className="font-mono text-xs opacity-50 mb-4 truncate">
-                slug: <span className="text-secondary">{s.slug || "—"}</span>
-              </div>
-
-              <p className="text-sm text-base-content/70 line-clamp-2 min-h-[2.5em] mb-4">
-                {s.description || "No description provided."}
+        <div className="space-y-6">
+          {/* New series */}
+          <form action={saveSeriesAction} className="panel">
+            <div className="card-body space-y-3 p-5">
+              <h2 className="font-display text-lg font-semibold">New series</h2>
+              <input name="name" required placeholder="Name, e.g. Mini Fest" className="input input-bordered input-sm" aria-label="Series name" />
+              <input name="match_pattern" placeholder="Pattern, e.g. ^Mini Fest" className="input input-bordered input-sm font-mono" aria-label="Name pattern" />
+              <label className="label cursor-pointer justify-start gap-2 py-0">
+                <input type="checkbox" name="has_festivals" defaultChecked className="checkbox checkbox-xs" />
+                <span className="label-text text-xs">Runs as festivals (several events at one casino)</span>
+              </label>
+              <button className="btn btn-primary btn-sm">Create</button>
+              <p className="text-[11px] text-base-content/50">
+                Patterns are case-insensitive. <code>^</code> means &ldquo;name starts with&rdquo;, <code>|</code> means
+                &ldquo;or&rdquo;. You can test a pattern on the series page.
               </p>
-
-              <div className="flex items-center justify-between pt-4 border-t border-white/5">
-                <div className="flex gap-2">
-                    <div className="badge badge-neutral text-xs font-bold">
-                        {s.events?.[0]?.count ?? 0} Events
-                    </div>
-                </div>
-                <span className="text-xs font-bold uppercase tracking-widest text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                    Manage →
-                </span>
-              </div>
-
             </div>
-          </Link>
-        ))}
+          </form>
+
+          {/* Events without a series */}
+          <div className="panel">
+            <div className="card-body p-5">
+              <h2 className="font-display text-lg font-semibold">Events without a series ({unassignedCount ?? 0})</h2>
+              {unassigned?.length ? (
+                <ul className="space-y-2 text-xs">
+                  {unassigned.map((e) => (
+                    <li key={e.id}>
+                      <Link href={`/admin/events/${e.id}`} className="hover:text-primary">{e.tournament_name}</Link>
+                      <div className="opacity-50">
+                        {e.casino} · {e.start_date ? new Date(e.start_date).toLocaleDateString("en-GB") : "—"}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs opacity-60">Every event belongs to a series.</p>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

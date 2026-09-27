@@ -5,6 +5,7 @@ import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import { isAdminUser } from '@/lib/isAdmin';
 
 // 1. Logic Component (not exported as default)
 function LoginContent() {
@@ -34,11 +35,12 @@ function LoginContent() {
       }
 
       const user = data.user;
-      const roles = ((user?.app_metadata as any)?.roles ?? []) as string[];
-      const isAdmin = roles.includes('admin') || !!(user?.user_metadata as any)?.is_admin;
+      const isAdmin = isAdminUser(user);
 
-      if (!isAdmin) {
-        setMsg('Signed in, but your account is not an admin. Ask an admin to grant access.');
+      // Admin pages are the only thing behind a login, so don't bounce non-admins to the 403 page.
+      if (!isAdmin && next.startsWith('/admin')) {
+        setMsg('Signed in, but this account is not an admin yet. Ask an admin to grant access.');
+        return;
       }
 
       router.replace(next);
@@ -51,24 +53,23 @@ function LoginContent() {
 
   return (
     <div className="w-full max-w-md">
-      <section className="card bg-base-100 shadow-xl">
-        <div className="card-body space-y-4">
+      <section className="panel">
+        <div className="space-y-5 p-7 sm:p-8">
           <div>
-            <h1 className="text-2xl font-semibold">Sign in</h1>
+            <h1 className="font-display text-3xl font-semibold tracking-tight">Sign in</h1>
             <p className="text-sm text-base-content/70 mt-1">
               Use your admin account to access the dashboard.
             </p>
           </div>
 
           <form onSubmit={signIn} className="space-y-3">
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text text-sm">Email</span>
-              </label>
+            <div className="space-y-1.5">
+              <span className="block text-sm font-medium text-base-content/75">Email</span>
               <input
-                className="input input-bordered w-full"
+                className="input w-full"
                 type="email"
                 placeholder="you@domain.com"
+                aria-label="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -77,14 +78,13 @@ function LoginContent() {
               />
             </div>
 
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text text-sm">Password</span>
-              </label>
+            <div className="space-y-1.5">
+              <span className="block text-sm font-medium text-base-content/75">Password</span>
               <input
-                className="input input-bordered w-full"
+                className="input w-full"
                 type="password"
                 placeholder="Your password"
+                aria-label="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -113,10 +113,10 @@ function LoginContent() {
           )}
 
           <div className="flex items-center justify-between text-sm pt-2">
-            <Link href="/signup" className="link link-hover">
+            <Link href="/signup" className="text-base-content/70 hover:text-primary">
               Create an account
             </Link>
-            <Link href="/auth/reset" className="link link-hover">
+            <Link href="/auth/reset" className="text-base-content/70 hover:text-primary">
               Forgot password?
             </Link>
           </div>
@@ -129,10 +129,10 @@ function LoginContent() {
 // 2. Default Export (Wrapper)
 export default function LoginPage() {
   return (
-    <main className="min-h-screen flex items-center justify-center bg-base-200 p-4">
-      <Suspense fallback={<div className="p-4 text-center">Loading login...</div>}>
+    <div className="flex flex-1 items-center justify-center px-4 py-16">
+      <Suspense fallback={<div className="p-10 text-center text-base-content/50">Loading…</div>}>
         <LoginContent />
       </Suspense>
-    </main>
+    </div>
   );
 }

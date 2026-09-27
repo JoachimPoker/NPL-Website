@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
     .from("seasons")
     .select(`
       *,
+      label:name,
       leagues (
         *,
         league_bonuses (*)
@@ -36,9 +37,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
-  // Sort leagues by ID or Label so they don't jump around
+  // Main league first (NPL, High Roller, Low Roller), then any others by id.
   if (data.leagues) {
-    data.leagues.sort((a: any, b: any) => a.id - b.id);
+    const rank = (slug: string) => ({ npl: 0, hrl: 1, lrl: 2 } as Record<string, number>)[slug] ?? 3;
+    data.leagues.sort((a: any, b: any) => rank(a.slug) - rank(b.slug) || a.id - b.id);
   }
 
   return NextResponse.json({ ok: true, season: data });

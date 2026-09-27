@@ -55,17 +55,18 @@ function ResetPasswordContent() {
 
   if (hasSessionFromRecovery) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="flex flex-1 items-center justify-center px-4 py-16">
         <div className="w-full max-w-md">
-          <div className="card bg-base-100 shadow-xl">
-            <div className="card-body space-y-4">
-              <h1 className="card-title text-2xl">Set a new password</h1>
+          <div className="panel">
+            <div className="space-y-5 p-7 sm:p-8">
+              <h1 className="font-display text-3xl font-semibold tracking-tight">Set a new password</h1>
 
               <form onSubmit={updatePassword} className="space-y-3">
                 <input
-                  className="input input-bordered w-full"
+                  className="input w-full"
                   type="password"
                   placeholder="New password"
+                aria-label="New password"
                   value={newPw}
                   onChange={(e) => setNewPw(e.target.value)}
                   required
@@ -98,17 +99,18 @@ function ResetPasswordContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="flex flex-1 items-center justify-center px-4 py-16">
       <div className="w-full max-w-md">
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body space-y-4">
-            <h1 className="card-title text-2xl">Reset password</h1>
+        <div className="panel">
+          <div className="space-y-5 p-7 sm:p-8">
+            <h1 className="font-display text-3xl font-semibold tracking-tight">Reset password</h1>
 
             <form onSubmit={sendReset} className="space-y-3">
               <input
-                className="input input-bordered w-full"
+                className="input w-full"
                 type="email"
                 placeholder="you@domain.com"
+                aria-label="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -143,7 +145,7 @@ function ResetPasswordContent() {
 // 2. Wrap it in Suspense for the main export
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<div className="p-10 text-center">Loading...</div>}>
+    <Suspense fallback={<div className="p-10 text-center text-base-content/50">Loading…</div>}>
       <ResetPasswordContent />
     </Suspense>
   )

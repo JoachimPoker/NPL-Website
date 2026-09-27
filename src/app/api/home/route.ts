@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseRouteClient } from "@/lib/supabaseServer";
+import { displayName } from "@/lib/nameMask";
 
 export const runtime = "nodejs";
 export const revalidate = 0;
@@ -26,28 +27,12 @@ function bad(code: number, msg: string, extra?: any) {
   }, { status: code });
 }
 
-function fullNameFrom(player?: any, fallback: string = "") {
-  const dn = (player?.display_name || "").trim();
-  if (dn) return dn;
-  const composed = [player?.forename, player?.surname].filter(Boolean).join(" ").trim();
-  return composed || fallback || "Anonymous";
-}
-
-function toInitials(full: string): string {
-  const parts = full.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "Anonymous";
-  if (parts.length === 1) return `${parts[0]![0]?.toUpperCase() ?? "A"}.`;
-  const first = parts[0]?.[0]?.toUpperCase() ?? "";
-  const last = parts[parts.length - 1]?.[0]?.toUpperCase() ?? "";
-  return `${first}. ${last}.`;
-}
-
 export async function GET() {
   try {
     const supabase = await createSupabaseRouteClient();
 
     // 1. Get Active Season
-    const { data: seasonRow } = await supabase.from("seasons").select("*").eq("is_active", true).maybeSingle();
+    const { data: seasonRow } = await supabase.from("seasons").select("*, label:name").eq("is_active", true).maybeSingle();
     const season = (seasonRow as any) || { 
       id: 0,
       label: "Current", 
@@ -60,19 +45,42 @@ export async function GET() {
     const from = season.start_date.slice(0, 10);
     const to = season.end_date.slice(0, 10);
 
+    // Leagues running this season (NPL first, then HRL, LRL, then any others)
+    const order = ["npl", "hrl", "lrl"];
+    const { data: leagueRows } = await supabase.from("leagues").select("slug, label").eq("season_id", season.id);
+    const rank = (s: string) => (order.indexOf(s) + 1) || order.length + 1;
+    const { data: prizeRows } = await supabase.from("season_prizes").select("position_to").eq("season_id", season.id).eq("league", "npl");
+    const prizePlaces = prizeRows?.length ? Math.max(...prizeRows.map((p) => p.position_to)) : null;
+    const { data: brandRows } = await supabase.from("league_brands").select("slug, logo_url");
+    const logoBySlug = new Map((brandRows || []).map((b) => [b.slug, b.logo_url]));
+    const leagues = (leagueRows?.length ? leagueRows : [{ slug: "npl", label: "National Poker League" }, { slug: "hrl", label: "High Roller League" }])
+      .sort((a, b) => rank(a.slug) - rank(b.slug))
+      .map((l) => ({ ...l, logo_url: logoBySlug.get(l.slug) ?? null }));
+
     // 2. Fetch Data (Removed datesRes from here to do it manually below)
-    const [nplRes, hrlRes, trendingRes, gainersRes] = await Promise.all([
-      supabase.rpc("leaderboard_season", { p_from: from, p_to: to, p_league: "npl", p_method: season.method ?? "ALL", p_cap: season.cap_x ?? 0 }),
-      supabase.rpc("leaderboard_season", { p_from: from, p_to: to, p_league: "hrl", p_method: "ALL", p_cap: 0 }),
+    // Every league running this season. Scoring rules come from the leagues table inside
+    // leaderboard_season; method/cap here are only the season-level fallback.
+    const [leagueResults, trendingRes, gainersRes] = await Promise.all([
+      Promise.all(
+        leagues.map((l) =>
+          supabase.rpc("leaderboard_season", {
+            p_from: from, p_to: to, p_league: l.slug,
+            p_method: l.slug === "npl" ? season.method ?? "ALL" : "ALL",
+            p_cap: l.slug === "npl" ? season.cap_x ?? 0 : 0,
+          })
+        )
+      ),
       supabase.rpc("rpc_trending_players_last30"),
       supabase.rpc("rpc_biggest_gainers_week", { p_league: "npl" })
     ]);
+    const resultsBySlug = new Map(leagues.map((l, i) => [l.slug, leagueResults[i].data || []]));
 
     // 3. Movement Logic: Smart Date Fetching
     // Step A: Get the absolute latest date
     const { data: latestRows } = await supabase
       .from("leaderboard_positions")
       .select("snapshot_date")
+      .eq("season_id", season.id)
       .order("snapshot_date", { ascending: false })
       .limit(1);
     
@@ -84,6 +92,7 @@ export async function GET() {
       const { data: prevRows } = await supabase
         .from("leaderboard_positions")
         .select("snapshot_date")
+        .eq("season_id", season.id)
         .lt("snapshot_date", latestDate) // Less than latest
         .order("snapshot_date", { ascending: false })
         .limit(1);
@@ -94,14 +103,13 @@ export async function GET() {
 
     if (latestDate) {
       // Step C: Limit lookup to Top 50 to respect Supabase limits
-      const topNpl = (nplRes.data || []).slice(0, 50);
-      const topHrl = (hrlRes.data || []).slice(0, 50);
-      const activeIds = [...topNpl, ...topHrl].map(r => String(r.player_id));
+      const activeIds = [...resultsBySlug.values()].flatMap((rows) => rows.slice(0, 50)).map((r) => Number(r.player_id));
       
       const { data: posData } = await supabase
         .from("leaderboard_positions")
         .select("player_id, position, snapshot_date, league")
-        .in("snapshot_date", [latestDate, previousDate].filter(Boolean))
+        .eq("season_id", season.id)
+        .in("snapshot_date", [latestDate, previousDate].filter((d): d is string => !!d))
         .in("player_id", activeIds);
 
       if (previousDate) {
@@ -148,36 +156,38 @@ export async function GET() {
       });
     };
 
-    const nplRows = formatRows(nplRes.data || [], "npl");
-    const hrlRows = formatRows(hrlRes.data || [], "hrl");
+    const rowsBySlug = new Map([...resultsBySlug].map(([slug, rows]) => [slug, formatRows(rows, slug)]));
 
     // 4. Hydrate Player Names & Masking
     const idsSet = new Set<string>();
-    [...nplRows.slice(0, 50), ...hrlRows.slice(0, 50)].forEach((r: any) => idsSet.add(String(r.player_id)));
+    [...rowsBySlug.values()].flatMap((rows) => rows.slice(0, 50)).forEach((r: any) => idsSet.add(String(r.player_id)));
     (trendingRes.data || []).forEach((r: any) => idsSet.add(String(r.player_id)));
     (gainersRes.data || []).forEach((r: any) => idsSet.add(String(r.player_id)));
 
-    const { data: players } = await supabase.from("players").select("id, display_name, forename, surname").in("id", Array.from(idsSet));
+    const { data: players } = await supabase.from("players").select("id, display_name, forename, surname, gdpr").in("id", Array.from(idsSet).map(Number));
     const playersMap = new Map(players?.map(p => [String(p.id), p]));
-    const { data: consents } = await supabase.from("results").select("player_id, gdpr_flag").in("player_id", Array.from(idsSet)).eq("is_deleted", false);
-    const consentMap = new Map();
-    consents?.forEach(c => { if(c.gdpr_flag) consentMap.set(String(c.player_id), true); });
+    const consentMap = new Map<string, boolean>();
+    players?.forEach(p => { if (p.gdpr) consentMap.set(String(p.id), true); });
 
+    // Same masking as everywhere else (initials without GDPR consent; "Unknown player" for junk names).
     const maskById = (pid: string, fallback: string) => {
       const p = playersMap.get(pid);
-      const full = fullNameFrom(p, fallback);
-      return consentMap.get(pid) ? full : toInitials(full);
+      return p ? displayName(p.forename, p.surname, !!consentMap.get(pid), p.display_name) : fallback;
     };
 
     return NextResponse.json({
       ok: true,
-      leagues: [{ slug: "npl", label: "National Poker League" }, { slug: "hrl", label: "High Roller League" }],
-      leaderboards: {
-        npl: nplRows.map(r => ({ ...r, display_name: maskById(String(r.player_id), r.display_name), movement: r.movement })),
-        hrl: hrlRows.map(r => ({ ...r, display_name: maskById(String(r.player_id), r.display_name), movement: r.movement }))
-      },
+      leagues,
+      leaderboards: Object.fromEntries(
+        [...rowsBySlug].map(([slug, rows]) => [
+          slug,
+          rows.map((r) => ({ ...r, display_name: maskById(String(r.player_id), r.display_name), movement: r.movement })),
+        ])
+      ),
       trending_players: (trendingRes.data || []).map((r: any) => ({ ...r, display_name: maskById(String(r.player_id), r.display_name) })),
       biggest_gainers: (gainersRes.data || []).map((r: any) => ({ ...r, display_name: maskById(String(r.player_id), r.display_name) })),
+      // Last paid place in the main league (null when no prizes are set: the site uses the top 10).
+      prize_places: prizePlaces,
       season_meta: season
     });
   } catch (e: any) {

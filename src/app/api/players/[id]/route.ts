@@ -5,11 +5,12 @@ import { displayName } from "@/lib/nameMask";
 export const dynamic = "force-dynamic";
 
 type PlayerRow = {
-  id: string;
+  id: number;
   forename: string | null;
   surname: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  gdpr: boolean | null;
 };
 
 export async function GET(
@@ -17,7 +18,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> } // Fix 1
 ) {
   const { id } = await params; // Fix 2
-  const playerId = id;
+  const playerId = Number(id);
+  if (!Number.isFinite(playerId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   
   const supabase = await createSupabaseRouteClient();
 
@@ -32,7 +36,7 @@ export async function GET(
   // Fetch Player Basic Info
   const { data: player, error: pErr } = await supabase
     .from("players")
-    .select("id, forename, surname, display_name, avatar_url")
+    .select("id, forename, surname, display_name, avatar_url, gdpr")
     .eq("id", playerId)
     .single<PlayerRow>();
 
@@ -40,21 +44,16 @@ export async function GET(
     return NextResponse.json({ error: pErr?.message || "Not found" }, { status: 404 });
   }
 
-  // Check GDPR Consent
-  const { data: consentRows, error: cErr } = await supabase
-    .from("results")
-    .select("gdpr_flag")
-    .eq("player_id", playerId);
-    
-  if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
-  const consent = (consentRows || []).some((r: any) => !!r.gdpr_flag);
+  // GDPR consent is stored per player
+  const consent = !!player.gdpr;
 
   // Fetch Recent Results
   const { data: results, error: rErr } = await supabase
     .from("results")
-    .select(`id, points, prize_amount, position_of_prize, created_at,
-             events:event_id ( id, name, start_date, site_name, buy_in_raw )`)
+    .select(`id, points, prize_amount, position_of_prize:finish_position, created_at,
+             events:event_id ( id, name:tournament_name, start_date, site_name:casino, buy_in_raw:buy_in )`)
     .eq("player_id", playerId)
+    .eq("is_deleted", false)
     .order("created_at", { ascending: false })
     .limit(30);
   if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 });
@@ -62,9 +61,10 @@ export async function GET(
   // Calculate Lifetime Points
   const { data: ptsAgg } = await supabase
     .from("results")
-    .select("points")
-    .eq("player_id", playerId);
-  const lifetime_points = (ptsAgg || []).reduce((acc: number, row: any) => acc + (Number(row.points) || 0), 0);
+    .select("points, penalty_points")
+    .eq("player_id", playerId)
+    .eq("is_deleted", false);
+  const lifetime_points = (ptsAgg || []).reduce((acc: number, row: any) => acc + (Number(row.points) || 0) + (Number(row.penalty_points) || 0), 0);
 
   // Return Data
   return NextResponse.json({

@@ -1,13 +1,22 @@
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
 import Link from "next/link";
+import { pageMeta } from "@/lib/site";
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import { Trophy } from "lucide-react";
+import PageHeader from "@/components/PageHeader";
+import UpcomingList from "@/components/tournaments/UpcomingList";
+import { getUpcoming } from "@/lib/venues";
+import { Initial } from "@/components/HomeLeaderboard";
+import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { SeriesMark, FestivalCard, ResultCard } from "@/components/tournaments/TournamentCards";
+import { type EventSummary, type FestivalSummary, type SeriesRow, gbpShort, day, eventHref } from "@/lib/tournaments";
 
 export const runtime = "nodejs";
-export const revalidate = 60;
+export const revalidate = 300;
 
-/* ---------- Types ---------- */
 type LbRow = {
   position: number;
-  player_id: string;
+  player_id: number;
   display_name: string;
   total_points: number;
   events_played: number;
@@ -15,305 +24,272 @@ type LbRow = {
   final_tables: number;
 };
 
-/* ---------- Helpers ---------- */
-function getProgress(start?: string, end?: string) {
-  if (!start || !end) return 0;
-  const now = new Date().getTime();
-  const s = new Date(start).getTime();
-  const e = new Date(end).getTime();
-  if (now < s) return 0;
-  if (now > e) return 100;
-  return Math.min(100, Math.max(0, ((now - s) / (e - s)) * 100));
+/** Series pages live at /events/<slug>; old numeric links (/events/12) still work. */
+async function findSeries(param: string) {
+  const supabase = await createSupabaseServerClient();
+  const cols = "id, name, slug, description, logo_url, has_festivals, sort_order";
+  const bySlug = await supabase.from("series").select(cols).eq("slug", param).maybeSingle();
+  if (bySlug.data) return bySlug.data as SeriesRow;
+  if (/^\d+$/.test(param)) {
+    const byId = await supabase.from("series").select(cols).eq("id", Number(param)).maybeSingle();
+    return (byId.data as SeriesRow) ?? null;
+  }
+  return null;
 }
 
-function getSeriesStatus(start?: string, end?: string) {
-  if (!start || !end) return { label: "Unknown", color: "badge-ghost" };
-  const now = new Date().getTime();
-  const s = new Date(start).getTime();
-  const e = new Date(end).getTime();
-  
-  if (now < s) return { label: "Upcoming", color: "badge-warning" };
-  if (now > e) return { label: "Completed", color: "badge-ghost opacity-50" };
-  return { label: "Live Now", color: "badge-error animate-pulse" };
+export async function generateMetadata(props: { params: Promise<{ seriesId: string }> }): Promise<Metadata> {
+  const s = await findSeries((await props.params).seriesId);
+  if (!s) return { title: "Series" };
+  return pageMeta({ title: s.name, description: s.description ?? `${s.name} standings, champions and festival results.`, path: `/events/${s.slug ?? s.id}` });
 }
 
-/* ---------- Page Component ---------- */
+/** The whole series table: the API returns at most 1,000 rows per request, so read it in pages. */
+async function allSeriesRows(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, seriesId: number, scope: string) {
+  const rows: LbRow[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .rpc("leaderboard_for_series", { p_series_id: seriesId, p_scope: scope })
+      .order("position")
+      .order("player_id") // stable across pages when positions tie
+      .range(from, from + 999);
+    if (error) return { data: rows.length ? rows : null, error };
+    rows.push(...((data || []) as LbRow[]));
+    if (!data || data.length < 1000) return { data: rows, error: null };
+  }
+}
+
 export default async function SeriesPage(props: {
   params: Promise<{ seriesId: string }>;
   searchParams: Promise<{ scope?: string; page?: string }>;
 }) {
   const params = await props.params;
   const sp = await props.searchParams;
-  
-  const seriesId = Number(params.seriesId);
-  // Default to 'season' if not specified
-  const scope = sp.scope === "all_time" ? "all_time" : "season";
-  const currentPage = Number(sp.page || 1);
-  const pageSize = 50;
+  const series = await findSeries(params.seriesId);
+  if (!series) notFound();
 
+  const scope = sp.scope === "all_time" ? "all_time" : "season";
+  const currentPage = Math.max(1, Number(sp.page || 1));
+  const pageSize = 50;
   const supabase = await createSupabaseServerClient();
 
-  // 1. Fetch Series Info
-  const { data: series } = await supabase
-    .from("series")
-    .select("id, name")
-    .eq("id", seriesId)
-    .single();
+  const { data: activeSeason } = await supabase.from("seasons").select("id, name").eq("is_active", true).maybeSingle();
 
-  // 2. Fetch Date Range (for progress bar)
-  const { data: dateRange } = await supabase
-    .from("events")
-    .select("start_date")
-    .eq("series_id", seriesId)
-    .order("start_date", { ascending: true });
-  
-  const startDate = dateRange?.[0]?.start_date;
-  const endDate = dateRange?.[dateRange.length - 1]?.start_date;
-  const progress = getProgress(startDate, endDate);
-  const status = getSeriesStatus(startDate, endDate);
+  const [{ data: lbRows, error: lbError }, { data: eventData }, { data: festivalData }, upcoming] = await Promise.all([
+    allSeriesRows(supabase, series.id, scope),
+    supabase.from("event_summary").select("*").eq("series_id", series.id).order("start_date", { ascending: false }).limit(400),
+    supabase.from("festival_summary").select("*").eq("series_id", series.id).order("start_date", { ascending: false }).limit(12),
+    getUpcoming({ seriesId: series.id }),
+  ]);
+  if (lbError) console.error("Series leaderboard error:", lbError);
 
-  // 3. Fetch Recent Champions (Most recent 4 winners)
-  const { data: recentWinners } = await supabase
-    .from("results")
-    .select("points, event:events!inner(name, start_date, series_id), player:players(id, display_name, forename, surname)")
-    .eq("events.series_id", seriesId)
-    .eq("position_of_prize", 1)
-    .eq("is_deleted", false)
-    .order("event(start_date)", { ascending: false })
-    .limit(4);
+  const allRows = (lbRows || []) as LbRow[];
+  const events = (eventData || []) as EventSummary[];
+  const festivals = (festivalData || []) as FestivalSummary[];
+  const seasonEvents = events.filter((e) => e.season_id === activeSeason?.id);
 
-  // 4. Fetch Leaderboard (Using SCOPE instead of LEAGUE)
-  const { data: rawRows, error: lbError } = await supabase.rpc("leaderboard_for_series", {
-    p_series_id: seriesId,
-    p_scope: scope, 
-  });
-
-  if (lbError) console.error("Leaderboard Error:", lbError);
-  const allRows: LbRow[] = rawRows || [];
-
-  // Stats Calculations
   const mostWins = [...allRows].sort((a, b) => b.wins - a.wins)[0];
   const mostFts = [...allRows].sort((a, b) => b.final_tables - a.final_tables)[0];
   const mostEvents = [...allRows].sort((a, b) => b.events_played - a.events_played)[0];
 
-  // Pagination
   const totalPlayers = allRows.length;
   const totalPages = Math.ceil(totalPlayers / pageSize);
-  const startIndex = (currentPage - 1) * pageSize;
-  const paginatedRows = allRows.slice(startIndex, startIndex + pageSize);
-
-  // 5. Fetch Festivals
-  const { data: festivals } = await supabase
-    .from("festivals")
-    .select("id, label, start_date, end_date")
-    .eq("series_id", seriesId)
-    .order("start_date", { ascending: true });
+  const paginatedRows = allRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
-    <div className="container mx-auto max-w-7xl space-y-10 py-8 px-4">
-      {/* Header with Progress Bar */}
-      <div className="flex flex-col gap-6 border-b border-white/5 pb-8">
-        <div className="flex flex-col md:flex-row items-start justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className={`badge ${status.color} font-bold uppercase tracking-widest text-xs`}>{status.label}</span>
-              <span className="text-xs font-bold uppercase tracking-widest text-primary">Tournament Series</span>
-            </div>
-            <h1 className="text-4xl md:text-5xl font-black uppercase italic tracking-tighter text-white">
-              {series?.name || `Series #${seriesId}`}
-            </h1>
-          </div>
-          
-          {/* SCOPE TOGGLE (Season vs All-Time) */}
-          <div className="flex items-center gap-2 bg-base-200/50 p-1 rounded-lg border border-white/5">
-             <Link 
-               href={`?scope=season`} 
-               className={`btn btn-sm ${scope === 'season' ? 'btn-primary' : 'btn-ghost'} uppercase font-bold`}
-             >
-               Current Season
-             </Link>
-             <Link 
-               href={`?scope=all_time`} 
-               className={`btn btn-sm ${scope === 'all_time' ? 'btn-secondary' : 'btn-ghost'} uppercase font-bold`}
-             >
-               All-Time
-             </Link>
-          </div>
-        </div>
-
-        {/* Progress Bar */}
-        <div className="w-full space-y-2">
-          <div className="flex justify-between text-xs font-mono opacity-50 uppercase">
-            <span>Start: {startDate ? new Date(startDate).toLocaleDateString() : 'TBA'}</span>
-            <span>{Math.round(progress)}% Complete</span>
-            <span>End: {endDate ? new Date(endDate).toLocaleDateString() : 'TBA'}</span>
-          </div>
-          <progress className="progress progress-primary w-full h-3" value={progress} max="100"></progress>
-        </div>
-      </div>
-
-      {/* "Wall of Champions" */}
-      {recentWinners && recentWinners.length > 0 && (
-        <section>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-xl">🔥</span>
-            <h3 className="text-lg font-bold uppercase tracking-widest text-white">Latest Champions</h3>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {recentWinners.map((w: any, i: number) => {
-              // @ts-ignore
-              const pName = w.player?.display_name || `${w.player?.forename} ${w.player?.surname}`;
-              return (
-                <div key={i} className="card bg-gradient-to-br from-base-100 to-base-200 border border-white/10 hover:border-warning/50 transition-all group">
-                  <div className="card-body p-5">
-                    <div className="text-xs font-bold text-warning uppercase tracking-wider mb-1">Winner</div>
-                    <div className="font-black text-lg text-white truncate group-hover:text-warning transition-colors">
-                      {pName}
-                    </div>
-                    <div className="text-xs opacity-60 mt-2 line-clamp-1" title={w.event?.name}>
-                      {w.event?.name}
-                    </div>
-                    <div className="text-xs font-mono opacity-40 mt-1">
-                      {new Date(w.event?.start_date).toLocaleDateString()}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* Main Stats Grid */}
-      {allRows.length > 0 && (
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <StatCard label="Most Wins" value={mostWins?.wins || 0} player={mostWins?.display_name} icon="🏆" color="text-warning" />
-          <StatCard label="Most Final Tables" value={mostFts?.final_tables || 0} player={mostFts?.display_name} icon="⚡" color="text-primary" />
-          <StatCard label="Most Cashes" value={mostEvents?.events_played || 0} player={mostEvents?.display_name} icon="💰" color="text-success" />
-        </section>
-      )}
-
-      {/* Leaderboard Table */}
-      <section className="card bg-base-100 shadow-xl border border-white/5 overflow-hidden">
-        <div className="card-header p-6 border-b border-white/5 bg-base-200/20 flex justify-between items-center">
-          <h3 className="text-xl font-bold uppercase tracking-wide">
-            {scope === 'season' ? 'Current Season' : 'All-Time'} Standings
-          </h3>
-          <span className="text-xs font-bold uppercase text-base-content/40 tracking-widest">
-            {totalPlayers} Players
-          </span>
-        </div>
-        
-        <div className="card-body p-0">
-          <div className="overflow-x-auto">
-            {!paginatedRows.length ? (
-              <div className="p-12 text-center text-base-content/50 italic">
-                {scope === 'season' 
-                  ? "No results recorded for the active season yet." 
-                  : "No results recorded for this series yet."}
-              </div>
-            ) : (
-              <table className="table table-lg w-full">
-                <thead>
-                  <tr className="bg-base-200/50 text-xs uppercase text-base-content/60 border-b border-white/5">
-                    <th className="w-20 text-center">Rank</th>
-                    <th>Player</th>
-                    <th className="text-right">Total Pts</th>
-                    <th className="text-right">Events</th>
-                    <th className="text-right hidden sm:table-cell">Wins</th>
-                    <th className="text-right hidden sm:table-cell">FTs</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedRows.map((r) => (
-                    <tr key={r.player_id} className={`hover:bg-base-200/30 transition-colors border-b border-base-200/50 last:border-0 ${r.position <= 3 ? 'bg-white/5' : ''}`}>
-                      <td className="text-center">
-                        {r.position === 1 && <div className="text-2xl">🥇</div>}
-                        {r.position === 2 && <div className="text-2xl">🥈</div>}
-                        {r.position === 3 && <div className="text-2xl">🥉</div>}
-                        {r.position > 3 && <span className="font-mono font-bold opacity-50 text-xl italic">{r.position}</span>}
-                      </td>
-                      <td>
-                        <Link className="font-bold text-lg hover:text-primary transition-colors" href={`/players/${encodeURIComponent(r.player_id)}`}>
-                          {r.display_name}
-                        </Link>
-                      </td>
-                      <td className="text-right font-black text-primary text-lg">
-                        {Number(r.total_points).toFixed(2)}
-                      </td>
-                      <td className="text-right font-mono opacity-80">
-                        {r.events_played}
-                      </td>
-                      <td className="text-right font-bold text-warning hidden sm:table-cell">
-                        {r.wins > 0 ? r.wins : '-'}
-                      </td>
-                      <td className="text-right font-mono opacity-60 hidden sm:table-cell">
-                        {r.final_tables > 0 ? r.final_tables : '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="card-footer p-4 border-t border-white/5 bg-base-200/20 flex justify-between items-center">
-             <div className="text-xs text-base-content/50">Page {currentPage} of {totalPages}</div>
-             <div className="join">
-                <Link href={`?scope=${scope}&page=${currentPage - 1}`} className={`join-item btn btn-sm ${currentPage <= 1 ? "btn-disabled" : "btn-outline"}`}>« Prev</Link>
-                <Link href={`?scope=${scope}&page=${currentPage + 1}`} className={`join-item btn btn-sm ${currentPage >= totalPages ? "btn-disabled" : "btn-outline"}`}>Next »</Link>
-             </div>
-          </div>
-        )}
-      </section>
-
-      {/* Festivals List */}
-      {festivals && festivals.length > 0 && (
-        <section>
-          <div className="flex items-center gap-2 mb-6 border-l-4 border-primary pl-4">
-             <h3 className="text-2xl font-bold uppercase italic tracking-tight text-white">Festivals</h3>
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {festivals.map((f) => (
-              <Link 
-                key={f.id}
-                href={`/events/${encodeURIComponent(params.seriesId)}/${encodeURIComponent(f.id)}`}
-                className="card bg-base-100 shadow-lg border border-white/5 hover:border-primary/50 hover:-translate-y-1 transition-all group"
+    <>
+      <PageHeader
+        eyebrow={<Link href="/events" className="hover:text-primary">Tournaments</Link>}
+        title={
+          series.logo_url ? (
+            // The logo is the title; its alt text carries the name.
+            <SeriesMark series={series} size="lg" />
+          ) : (
+            <span className="flex items-center gap-4">
+              <SeriesMark series={series} size="lg" />
+              {series.name}
+            </span>
+          )
+        }
+        description={series.description || undefined}
+        actions={
+          <div role="tablist" aria-label="Standings period" className="inline-flex rounded-lg bg-base-100 p-1 ring-1 ring-inset ring-base-content/[0.07]">
+            {[
+              { key: "season", label: "This season" },
+              { key: "all_time", label: "All-time" },
+            ].map((o) => (
+              <Link
+                key={o.key}
+                href={`?scope=${o.key}`}
+                role="tab"
+                aria-selected={scope === o.key}
+                className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+                  scope === o.key ? "bg-primary text-primary-content" : "text-base-content/60 hover:text-base-content"
+                }`}
               >
-                <div className="card-body">
-                  <div className="flex justify-between">
-                    <div className="text-xs font-bold uppercase tracking-widest text-base-content/40 mb-1">Festival</div>
-                    {getSeriesStatus(f.start_date, f.end_date).label === 'Live Now' && <span className="badge badge-error badge-xs animate-pulse">LIVE</span>}
-                  </div>
-                  <h4 className="card-title text-lg font-bold group-hover:text-primary transition-colors">{f.label}</h4>
-                  <div className="mt-4 flex items-center justify-between text-xs text-base-content/60 font-mono">
-                    <span>{f.start_date ? new Date(f.start_date).toLocaleDateString() : "TBA"}</span>
-                    <span>→</span>
-                    <span>{f.end_date ? new Date(f.end_date).toLocaleDateString() : "TBA"}</span>
-                  </div>
-                </div>
+                {o.label}
               </Link>
             ))}
           </div>
-        </section>
-      )}
+        }
+      >
+        <dl className="grid max-w-3xl grid-cols-2 gap-6 sm:grid-cols-4">
+          <Headline label="Events this season" value={String(seasonEvents.length)} />
+          <Headline label="Cashes" value={seasonEvents.reduce((n, e) => n + e.entries, 0).toLocaleString("en-GB")} />
+          <Headline label="Paid out" value={gbpShort(seasonEvents.reduce((n, e) => n + Number(e.paid_out || 0), 0))} />
+          <Headline label="Last event" value={events[0] ? day(events[0].start_date, { day: "numeric", month: "short", year: "numeric" }) : "–"} />
+        </dl>
+      </PageHeader>
+
+      <div className="mx-auto w-full max-w-7xl space-y-14 px-4 py-10 sm:px-6 lg:px-8">
+        <UpcomingList items={upcoming} title={`Next ${series.name} dates`} />
+
+        {/* Record holders */}
+        {allRows.length > 0 && (
+          <section className="grid gap-4 md:grid-cols-3" aria-label="Record holders">
+            <StatCard label="Most wins" value={mostWins?.wins || 0} player={mostWins?.display_name} playerId={mostWins?.player_id} />
+            <StatCard label="Most final tables" value={mostFts?.final_tables || 0} player={mostFts?.display_name} playerId={mostFts?.player_id} />
+            <StatCard label="Most events" value={mostEvents?.events_played || 0} player={mostEvents?.display_name} playerId={mostEvents?.player_id} />
+          </section>
+        )}
+
+        <div className="grid gap-8 lg:grid-cols-12">
+          {/* Standings */}
+          <section className="panel overflow-hidden lg:col-span-8" aria-labelledby="series-standings">
+            <div className="flex items-center justify-between border-b border-base-content/[0.07] px-6 py-5">
+              <h2 id="series-standings" className="font-display text-xl font-semibold tracking-tight">
+                {scope === "season" ? "This season" : "All-time"} standings
+              </h2>
+              <span className="text-sm text-base-content/45">{totalPlayers.toLocaleString("en-GB")} players</span>
+            </div>
+
+            <div className="overflow-x-auto">
+              {!paginatedRows.length ? (
+                <div className="px-6 py-16 text-center">
+                  <div className="font-display text-lg">No results yet</div>
+                  <p className="mt-1 text-sm text-base-content/50">
+                    {scope === "season" ? "Nothing has been recorded for this season." : "Nothing has been recorded for this series."}
+                  </p>
+                </div>
+              ) : (
+                <table className="table w-full">
+                  <thead>
+                    <tr>
+                      <th className="w-16 pl-6 text-center">#</th>
+                      <th>Player</th>
+                      <th className="text-right">Events</th>
+                      <th className="hidden text-right sm:table-cell">Wins</th>
+                      <th className="hidden text-right sm:table-cell">FTs</th>
+                      <th className="pr-6 text-right">Points</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedRows.map((r) => {
+                      const podium = r.position <= 3;
+                      return (
+                        <tr key={r.player_id} className={`transition-colors hover:bg-base-content/[0.03] ${podium ? "bg-primary/[0.035]" : ""}`}>
+                          <td className={`pl-6 text-center font-mono text-base font-semibold ${podium ? "text-primary" : "text-base-content/45"}`}>
+                            {r.position}
+                          </td>
+                          <td>
+                            <Link className="group flex items-center gap-3 font-medium" href={`/players/${r.player_id}`}>
+                              <Initial name={r.display_name} />
+                              <span className="transition-colors group-hover:text-primary">{r.display_name}</span>
+                            </Link>
+                          </td>
+                          <td className="text-right font-mono text-sm text-base-content/60">{r.events_played}</td>
+                          <td className="hidden text-right font-mono text-sm text-base-content/60 sm:table-cell">{r.wins > 0 ? r.wins : "–"}</td>
+                          <td className="hidden text-right font-mono text-sm text-base-content/60 sm:table-cell">{r.final_tables > 0 ? r.final_tables : "–"}</td>
+                          <td className="pr-6 text-right font-mono text-base font-semibold">{Number(r.total_points).toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-base-content/[0.07] px-6 py-4">
+                <div className="text-sm text-base-content/50">Page {currentPage} of {totalPages}</div>
+                <div className="join">
+                  <Link href={`?scope=${scope}&page=${currentPage - 1}`} aria-disabled={currentPage <= 1} className={`join-item btn btn-sm ${currentPage <= 1 ? "btn-disabled" : "btn-ghost"}`}>Previous</Link>
+                  <Link href={`?scope=${scope}&page=${currentPage + 1}`} aria-disabled={currentPage >= totalPages} className={`join-item btn btn-sm ${currentPage >= totalPages ? "btn-disabled" : "btn-ghost"}`}>Next</Link>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* Latest champions */}
+          <aside className="space-y-4 lg:col-span-4">
+            <h2 className="font-display text-lg font-semibold">Latest champions</h2>
+            {events.length > 0 ? (
+              <ol className="panel divide-y divide-base-content/[0.06]">
+                {events.slice(0, 6).map((e) => (
+                  <li key={e.id}>
+                    <Link href={eventHref(e.id)} className="flex items-start gap-3 p-4 transition-colors hover:bg-base-content/[0.03]">
+                      <Trophy size={16} className="mt-1 shrink-0 text-primary" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <div className="truncate font-display font-medium">{e.winner_name ?? "–"}</div>
+                        <div className="truncate text-sm text-base-content/50" title={e.name ?? ""}>{e.name}</div>
+                        <div className="mt-0.5 font-mono text-xs text-base-content/35">{day(e.start_date, { day: "numeric", month: "short", year: "numeric" })}</div>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="panel p-5 text-sm text-base-content/45">No winners recorded yet.</p>
+            )}
+          </aside>
+        </div>
+
+        {/* Festivals, or recent events for single-event series */}
+        {series.has_festivals && festivals.length > 0 ? (
+          <section aria-labelledby="series-festivals">
+            <h2 id="series-festivals" className="mb-5 font-display text-2xl font-semibold tracking-tight">Festivals</h2>
+            <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {festivals.map((f) => (
+                <li key={f.id}><FestivalCard festival={f} series={series} /></li>
+              ))}
+            </ul>
+          </section>
+        ) : events.length > 0 ? (
+          <section aria-labelledby="series-events">
+            <h2 id="series-events" className="mb-5 font-display text-2xl font-semibold tracking-tight">Recent events</h2>
+            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {events.slice(0, 9).map((e) => (
+                <li key={e.id}><ResultCard event={e} series={series} /></li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+function Headline({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="eyebrow">{label}</dt>
+      <dd className="mt-1 font-display text-2xl font-semibold tracking-tight">{value}</dd>
     </div>
   );
 }
 
-function StatCard({ label, value, player, icon, color }: { label: string; value: number; player?: string; icon: string; color: string }) {
+function StatCard({ label, value, player, playerId }: { label: string; value: number; player?: string; playerId?: number }) {
   if (!player || value === 0) return null;
   return (
-    <div className="card bg-base-100 shadow-md border border-white/5 p-4 flex flex-row items-center gap-4">
-      <div className="text-3xl grayscale opacity-80">{icon}</div>
-      <div>
-        <div className="text-xs font-bold uppercase tracking-widest text-base-content/50">{label}</div>
-        <div className={`text-2xl font-black ${color}`}>{value}</div>
-        <div className="text-sm font-bold text-white truncate max-w-[150px]">{player}</div>
+    <div className="panel flex items-end justify-between gap-4 p-5">
+      <div className="min-w-0">
+        <div className="eyebrow">{label}</div>
+        {playerId ? (
+          <Link href={`/players/${playerId}`} className="mt-2 block truncate font-display text-lg font-medium hover:text-primary">{player}</Link>
+        ) : (
+          <div className="mt-2 truncate font-display text-lg font-medium">{player}</div>
+        )}
       </div>
+      <div className="font-mono text-3xl font-semibold text-primary">{value}</div>
     </div>
   );
 }

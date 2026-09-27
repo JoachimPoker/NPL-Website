@@ -41,26 +41,28 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="flex flex-1 items-center justify-center px-4 py-16">
       <div className="w-full max-w-md">
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body space-y-4">
-            <h1 className="card-title text-2xl">Create account</h1>
+        <div className="panel">
+          <div className="space-y-5 p-7 sm:p-8">
+            <h1 className="font-display text-3xl font-semibold tracking-tight">Create account</h1>
 
             <form onSubmit={signUp} className="space-y-3">
               <input
-                className="input input-bordered w-full"
+                className="input w-full"
                 type="email"
                 placeholder="you@domain.com"
+                aria-label="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoComplete="email"
               />
               <input
-                className="input input-bordered w-full"
+                className="input w-full"
                 type="password"
                 placeholder="Choose a password"
+                aria-label="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -68,9 +70,10 @@ export default function SignupPage() {
                 autoComplete="new-password"
               />
               <input
-                className="input input-bordered w-full"
+                className="input w-full"
                 type="password"
                 placeholder="Confirm password"
+                aria-label="Confirm password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 required
@@ -102,7 +105,7 @@ export default function SignupPage() {
               <span className="text-base-content/70">
                 Already have an account?
               </span>
-              <Link href="/login" className="link link-hover">
+              <Link href="/login" className="text-base-content/70 hover:text-primary">
                 Sign in
               </Link>
             </div>

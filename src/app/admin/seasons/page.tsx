@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 // ✅ Type definition matches your actual 'seasons' table
 type Season = {
@@ -140,10 +141,14 @@ export default function AdminSeasonsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm text-base-content/70">
-          Manage Seasons
+    <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-10 sm:px-6 lg:px-8">
+      <div className="flex flex-col gap-4 border-b border-base-content/[0.07] pb-6 md:flex-row md:items-end md:justify-between">
+        <div>
+          <div className="eyebrow mb-2 text-primary">Admin</div>
+          <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">Seasons</h1>
+          <p className="max-w-2xl text-sm text-base-content/60">
+            Season dates follow the weekly reports. Open a season to set its leagues and scoring rules, or its prizes.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -151,7 +156,7 @@ export default function AdminSeasonsPage() {
             onClick={startCreate}
             disabled={!!editing}
           >
-            + New Season
+            + New season
           </button>
           <button
             className="btn btn-outline btn-sm"
@@ -176,14 +181,14 @@ export default function AdminSeasonsPage() {
 
       {/* Editor Form */}
       {editing && (
-        <div className="card bg-base-100 shadow-sm border border-white/10">
+        <div className="panel">
           <div className="card-body space-y-4">
-            <h3 className="font-bold text-lg">{editing.id ? "Edit Season" : "New Season"}</h3>
+            <h3 className="font-display font-semibold text-lg">{editing.id ? "Edit season" : "New season"}</h3>
             
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="label">
-                  <span className="label-text text-sm font-bold">Label</span>
+                  <span className="label-text text-xs font-bold">Label</span>
                 </label>
                 <input
                   className="input input-bordered input-sm w-full"
@@ -197,7 +202,7 @@ export default function AdminSeasonsPage() {
 
               <div className="flex items-end justify-end pb-2">
                 <label className="label cursor-pointer gap-2">
-                  <span className="label-text text-sm">Is Active?</span>
+                  <span className="label-text text-sm">Active season</span>
                   <input
                     type="checkbox"
                     className="checkbox checkbox-sm"
@@ -211,7 +216,7 @@ export default function AdminSeasonsPage() {
 
               <div>
                 <label className="label">
-                  <span className="label-text text-sm font-bold">Start Date</span>
+                  <span className="label-text text-xs font-bold">Start date</span>
                 </label>
                 <input
                   type="date"
@@ -224,7 +229,7 @@ export default function AdminSeasonsPage() {
               </div>
               <div>
                 <label className="label">
-                  <span className="label-text text-sm font-bold">End Date</span>
+                  <span className="label-text text-xs font-bold">End date</span>
                 </label>
                 <input
                   type="date"
@@ -244,7 +249,7 @@ export default function AdminSeasonsPage() {
                 onClick={save}
                 disabled={loading}
               >
-                Save Changes
+                Save changes
               </button>
               <button
                 className="btn btn-ghost btn-sm"
@@ -264,7 +269,7 @@ export default function AdminSeasonsPage() {
                         onClick={() => editing.id && setActive(editing.id)}
                         disabled={loading}
                       >
-                        Set Active
+                        Set active
                       </button>
                    )}
                    <button
@@ -283,7 +288,7 @@ export default function AdminSeasonsPage() {
       )}
 
       {/* List Table */}
-      <div className="card overflow-hidden bg-base-100 shadow-sm border border-white/5">
+      <div className="panel overflow-hidden">
         <div className="card-body p-0 overflow-x-auto">
           {loading && !list.length ? (
             <p className="p-4 text-sm text-base-content/70">Loading…</p>
@@ -302,7 +307,7 @@ export default function AdminSeasonsPage() {
               <tbody>
                 {list.map((s) => (
                   <tr key={s.id} className="hover:bg-base-200/20">
-                    <td className="font-medium text-white">{s.label}</td>
+                    <td className="font-medium text-base-content">{s.label}</td>
                     <td className="text-xs font-mono opacity-70">
                       {s.start_date} → {s.end_date}
                     </td>
@@ -315,9 +320,21 @@ export default function AdminSeasonsPage() {
                         <span className="opacity-20">—</span>
                       )}
                     </td>
-                    <td className="text-right">
+                    <td className="text-right space-x-1">
+                      <Link
+                        href={`/admin/seasons/${s.id}`}
+                        className="btn btn-ghost btn-xs"
+                      >
+                        Leagues
+                      </Link>
+                      <Link
+                        href={`/admin/seasons/${s.id}/prizes`}
+                        className="btn btn-ghost btn-xs"
+                      >
+                        Prizes
+                      </Link>
                       <button
-                        className="btn btn-ghost btn-xs uppercase font-bold"
+                        className="btn btn-ghost btn-xs"
                         type="button"
                         onClick={() => startEdit(s)}
                       >

@@ -1,8 +1,12 @@
 import Link from "next/link";
+import { ArrowRight, CircleDot, Eye, TrendingUp, Trophy } from "lucide-react";
 import HomeLeaderboard from "@/components/HomeLeaderboard";
+import { getHomeExtras, SeasonStrip, ComingUp, LatestResults, FestivalsAndNews, Honours } from "@/components/home/HomeExtras";
 
 export const runtime = "nodejs";
-export const revalidate = 60; 
+export const revalidate = 60;
+// Title, description and card text come from the root layout; only the canonical URL is home-specific.
+export const metadata = { alternates: { canonical: "/" } };
 
 /* ---------- Types ---------- */
 type LbRow = {
@@ -17,58 +21,116 @@ type LbRow = {
 };
 
 type HomeResp = {
-  ok: boolean; // Changed to boolean to allow false checks
+  ok: boolean;
   season_meta: { id: number; label: string; start_date: string; end_date: string; cap_x: number };
   leagues: { slug: string, label: string }[];
-  leaderboards: Record<string, LbRow[]>; 
+  leaderboards: Record<string, LbRow[]>;
   upcoming_events: Array<{ id: string; name: string; start_date: string }>;
   trending_players: Array<{ player_id: string; hits: number; display_name: string }>;
   biggest_gainers: Array<{ player_id: string; display_name: string; from_pos: number; to_pos: number; delta: number }>;
+  prize_places: number | null;
 };
 
 /* ---------- Components ---------- */
 
-function AnnouncementBar() {
+function Hero({ seasonLabel, podium }: { seasonLabel: string; podium: LbRow[] }) {
   return (
-    <div className="w-full bg-base-300 border-b border-base-content/5 py-1.5 overflow-hidden">
-      <div className="mx-auto max-w-7xl px-4 flex items-center justify-between text-xs font-medium uppercase tracking-wide text-base-content/70">
-        <span>📢 Next Event: GUKPT Leeds — Starts Next Thursday</span>
-        <span className="hidden sm:inline">🏆 Rankings Updated Daily</span>
+    <section className="relative overflow-hidden border-b border-base-content/[0.07]">
+      <div className="felt-glow pointer-events-none absolute inset-0" aria-hidden="true" />
+      <div className="relative mx-auto grid max-w-7xl gap-12 px-4 pb-16 pt-14 sm:px-6 md:pt-20 lg:grid-cols-12 lg:px-8">
+        <div className="rise space-y-7 lg:col-span-7">
+          <div className="eyebrow text-primary/90">{seasonLabel}</div>
+          <h1 className="font-display text-5xl font-semibold leading-[0.98] tracking-[-0.035em] sm:text-6xl md:text-7xl">
+            Every cash counts <span className="text-base-content/40">towards the</span> title.
+          </h1>
+          <p className="max-w-lg text-lg text-base-content/60">
+            Standings, results and player records from the National Poker League and High Roller League.
+          </p>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <Link href="/leaderboards" className="btn btn-primary px-6 font-semibold">
+              See the leaderboards
+            </Link>
+            <Link href="/events" className="group inline-flex items-center gap-1.5 text-sm font-medium text-base-content/75 hover:text-base-content">
+              Browse tournaments
+              <ArrowRight size={15} className="transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          </div>
+        </div>
+
+        <div className="rise lg:col-span-5 [animation-delay:120ms]">
+          <Podium rows={podium} />
+        </div>
       </div>
+    </section>
+  );
+}
+
+/** Top three of the main league. */
+function Podium({ rows }: { rows: LbRow[] }) {
+  return (
+    <div className="panel p-6">
+      <div className="flex items-center justify-between">
+        <div className="eyebrow">Current leaders</div>
+        <Trophy size={16} className="text-primary" aria-hidden="true" />
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="py-10 text-center">
+          <div className="font-display text-lg text-base-content/70">The table is empty</div>
+          <p className="mt-1 text-sm text-base-content/40">Leaders show up once this season&apos;s first results are in.</p>
+        </div>
+      ) : (
+        <ol className="mt-5 space-y-2">
+          {rows.map((r, i) => (
+            <li key={`${r.player_id}-${i}`}>
+              <Link
+                href={r.player_id ? `/players/${r.player_id}` : "/leaderboards"}
+                className={`group flex items-center gap-4 rounded-xl px-4 transition-colors hover:bg-base-content/[0.04] ${
+                  i === 0 ? "bg-primary/[0.07] py-4 ring-1 ring-inset ring-primary/20" : "py-3"
+                }`}
+              >
+                <span className={`w-6 font-mono text-sm font-semibold ${i === 0 ? "text-primary" : "text-base-content/40"}`}>
+                  {r.position}
+                </span>
+                <span className={`min-w-0 flex-1 truncate font-display font-medium group-hover:text-primary ${i === 0 ? "text-xl" : "text-base"}`}>
+                  {r.display_name}
+                </span>
+                <span className="text-right">
+                  <span className={`block font-mono font-semibold ${i === 0 ? "text-lg" : "text-sm"}`}>
+                    {Number(r.total_points).toFixed(2)}
+                  </span>
+                  <span className="block text-[11px] text-base-content/40">pts</span>
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   );
 }
 
-function Hero() {
+function SideList({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="relative w-full h-[400px] bg-neutral overflow-hidden">
-      <div 
-        className="absolute inset-0 bg-cover bg-right bg-no-repeat opacity-50"
-        style={{ backgroundImage: 'url(/poker-hero.jpg)' }} 
-      ></div>
-      <div className="absolute inset-0 bg-gradient-to-r from-base-100 via-base-100/90 to-transparent"></div>
+    <section className="panel p-5">
+      <h2 className="mb-4 flex items-center gap-2 font-display text-base font-semibold">
+        <span className="text-primary" aria-hidden="true">{icon}</span>
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
 
-      <div className="relative z-10 mx-auto h-full max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col justify-center">
-        <div className="max-w-xl space-y-6">
-          <div className="inline-block px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold uppercase tracking-widest">
-            Unofficial Fan Site
-          </div>
-          <h1 className="text-5xl md:text-6xl font-black uppercase italic tracking-tighter text-white leading-[0.9]">
-            The Future <br/> of Poker <span className="text-primary">Is Here.</span>
-          </h1>
-          <p className="text-lg text-base-content/80 font-medium">
-            Join the National Poker League. Track your stats, climb the ranks, and compete for glory.
-          </p>
-          <div className="flex gap-4">
-            <Link href="/signup" className="btn btn-primary btn-lg uppercase font-bold border-none">
-              Join the League
-            </Link>
-            <Link href="/leaderboards" className="btn btn-outline btn-lg uppercase font-bold text-white hover:bg-white hover:text-black">
-              View Standings
-            </Link>
-          </div>
-        </div>
-      </div>
+function Empty({ children }: { children: React.ReactNode }) {
+  return <p className="text-sm text-base-content/40">{children}</p>;
+}
+
+function Unavailable() {
+  return (
+    <div className="mx-auto max-w-md px-4 py-24 text-center">
+      <h1 className="font-display text-2xl font-semibold">Leaderboards are unavailable</h1>
+      <p className="mt-2 text-base-content/55">We couldn&apos;t load the latest results. Please try again in a minute.</p>
     </div>
   );
 }
@@ -76,111 +138,117 @@ function Hero() {
 /* ---------- Page ---------- */
 export default async function HomePage() {
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-  const res = await fetch(`${base}/api/home`, { cache: "no-store" }); 
-  
-  if (!res.ok) return <div className="p-8 text-center">Failed to load data.</div>;
-  
+  const [res, extras] = await Promise.all([
+    fetch(`${base}/api/home`, { cache: "no-store" }),
+    getHomeExtras(),
+  ]);
+
+  if (!res.ok) return <Unavailable />;
+
   const data = (await res.json()) as HomeResp;
 
-  // SAFETY CHECK: Ensure data structure exists before accessing properties
-  if (!data || !data.ok || !data.leagues) {
-     return <div className="p-10 text-center">Leaderboard service unavailable.</div>;
-  }
+  if (!data || !data.ok || !data.leagues) return <Unavailable />;
 
   const mainLeagueSlug = data.leagues.find(l => l.slug === 'global' || l.slug === 'npl')?.slug || data.leagues[0]?.slug;
-  
-  // Use optional chaining and default empty arrays for safety
+
   const mainData = data.leaderboards?.[mainLeagueSlug] || [];
   const trendingPlayers = data.trending_players || [];
   const biggestGainers = data.biggest_gainers || [];
-  const bubblePlayers = mainData.slice(18, 23);
+  // Same rule as the Standings page: the prize places, or the top 10 when no prizes are set.
+  const paidPlaces = data.prize_places ?? 10;
+  const lineRow = mainData.find((r) => r.position === paidPlaces);
+  const bubblePlayers = mainData.filter((r) => r.position > paidPlaces && r.position <= paidPlaces + 5);
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <AnnouncementBar />
-      <Hero />
+    <div className="flex flex-col">
+      <Hero seasonLabel={data.season_meta?.label || "Current"} podium={mainData.slice(0, 3)} />
+      <SeasonStrip extras={extras} />
 
-      <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
-          <div className="lg:col-span-8 space-y-8">
-            <HomeLeaderboard 
-                leagues={data.leagues}
-                leaderboards={data.leaderboards} 
-                seasonLabel={data.season_meta?.label || "Current Season"}
-                cap={data.season_meta?.cap_x || 0}
+      <div className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <div className="lg:col-span-8">
+            <HomeLeaderboard
+              leagues={data.leagues}
+              leaderboards={data.leaderboards}
+              seasonLabel={data.season_meta?.label || "Current season"}
+              cap={data.season_meta?.cap_x || 0}
             />
           </div>
 
-          <div className="lg:col-span-4 space-y-6">
-            <div className="card bg-base-100 shadow-lg border border-white/5 p-5">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-base-content/50 mb-4 flex items-center gap-2">
-                🔥 Trending Players
-              </h4>
-              <ul className="space-y-3">
-                {trendingPlayers.slice(0, 5).map((p, i) => (
-                  <li key={p.player_id} className="flex items-center justify-between group cursor-pointer">
-                    <Link href={`/players/${p.player_id}`} className="flex items-center gap-3">
-                      <span className="text-lg font-black text-base-content/20 group-hover:text-primary transition-colors">0{i+1}</span>
-                      <span className="font-semibold group-hover:text-primary transition-colors">{p.display_name}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="card bg-base-100 shadow-lg border border-white/5 p-5">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-base-content/50 mb-4 flex items-center gap-2">
-                🚀 Biggest Movers (Week)
-              </h4>
-              <ul className="space-y-3">
-                {biggestGainers.length === 0 ? (
-                  <div className="text-sm text-base-content/40 italic">No movement recorded yet.</div>
-                ) : (
-                  biggestGainers.slice(0, 5).map((g) => (
-                    <li key={g.player_id} className="flex items-center justify-between">
-                      <Link href={`/players/${g.player_id}`} className="font-semibold hover:text-primary truncate max-w-[150px]">
-                        {g.display_name}
+          <aside className="space-y-6 lg:col-span-4">
+            <SideList title="Most viewed players" icon={<Eye size={16} />}>
+              {trendingPlayers.length === 0 ? (
+                <Empty>Nobody has been looked up yet.</Empty>
+              ) : (
+                <ol className="space-y-1">
+                  {trendingPlayers.slice(0, 5).map((p, i) => (
+                    <li key={p.player_id}>
+                      <Link href={`/players/${p.player_id}`} className="group -mx-2 flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-base-content/[0.04]">
+                        <span className="w-5 font-mono text-xs text-base-content/35">{i + 1}</span>
+                        <span className="truncate font-medium group-hover:text-primary">{p.display_name}</span>
                       </Link>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-base-content/40">#{g.from_pos} → #{g.to_pos}</span>
-                        <span className="badge badge-success badge-sm font-bold text-white">+{g.delta}</span>
-                      </div>
                     </li>
-                  ))
-                )}
-              </ul>
-            </div>
+                  ))}
+                </ol>
+              )}
+            </SideList>
 
-            <div className="card bg-warning/10 shadow-lg border border-warning/20 p-5">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-warning mb-4 flex items-center gap-2">
-                ⚠️ The Bubble Watch
-              </h4>
-              <p className="text-xs text-base-content/60 mb-4">
-                Players ranked 19-23, fighting to break into the Top 18 prize zone.
+            <SideList title="Biggest climbers this week" icon={<TrendingUp size={16} />}>
+              {biggestGainers.length === 0 ? (
+                <Empty>No movement recorded yet.</Empty>
+              ) : (
+                <ul className="space-y-1">
+                  {biggestGainers.slice(0, 5).map((g) => (
+                    <li key={g.player_id}>
+                      <Link href={`/players/${g.player_id}`} className="group -mx-2 flex items-center justify-between gap-3 rounded-lg px-2 py-2 hover:bg-base-content/[0.04]">
+                        <span className="truncate font-medium group-hover:text-primary">{g.display_name}</span>
+                        <span className="flex shrink-0 items-center gap-2 font-mono text-xs">
+                          <span className="text-base-content/40">{g.from_pos}→{g.to_pos}</span>
+                          <span className="rounded bg-success/15 px-1.5 py-0.5 font-semibold text-success">+{g.delta}</span>
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SideList>
+
+            <SideList title="On the bubble" icon={<CircleDot size={16} />}>
+              <p className="-mt-2 mb-4 text-sm text-base-content/50">
+                Just outside the {data.prize_places ? `prize places (top ${paidPlaces})` : `top ${paidPlaces}`}.
               </p>
-              <ul className="space-y-2">
-                {bubblePlayers.length === 0 ? (
-                  <div className="text-sm opacity-50">Not enough data yet.</div>
-                ) : (
-                  bubblePlayers.map((p) => (
-                    <li key={p.position} className="flex justify-between items-center text-sm border-b border-warning/10 pb-1 last:border-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-warning font-bold w-6">#{p.position}</span>
-                         {p.is_anonymized ? (
-                            <span className="opacity-60 italic">{p.display_name}</span>
-                         ) : (
-                            <Link href={`/players/${p.player_id}`} className="hover:text-warning transition-colors">{p.display_name}</Link>
-                         )}
-                      </div>
-                      <span className="font-mono opacity-60 font-bold">{Number(p.total_points).toFixed(1)}</span>
+              {bubblePlayers.length === 0 ? (
+                <Empty>Not enough players ranked yet.</Empty>
+              ) : (
+                <ul className="divide-y divide-base-content/[0.06]">
+                  {bubblePlayers.map((p) => (
+                    <li key={p.position} className="flex items-center justify-between gap-3 py-2 text-sm">
+                      <span className="flex min-w-0 items-center gap-3">
+                        <span className="w-7 font-mono text-xs text-warning">{p.position}</span>
+                        {p.is_anonymized || !p.player_id ? (
+                          <span className="truncate italic text-base-content/45">{p.display_name}</span>
+                        ) : (
+                          <Link href={`/players/${p.player_id}`} className="truncate hover:text-primary">{p.display_name}</Link>
+                        )}
+                      </span>
+                      <span className="font-mono text-xs text-base-content/55">
+                        {lineRow
+                          ? `${(Number(lineRow.total_points) - Number(p.total_points)).toFixed(2)} short`
+                          : Number(p.total_points).toFixed(2)}
+                      </span>
                     </li>
-                  ))
-                )}
-              </ul>
-            </div>
+                  ))}
+                </ul>
+              )}
+            </SideList>
+          </aside>
+        </div>
 
-          </div>
+        <div className="mt-16 space-y-16">
+          <ComingUp extras={extras} />
+          <LatestResults extras={extras} />
+          <FestivalsAndNews extras={extras} />
+          <Honours extras={extras} />
         </div>
       </div>
     </div>

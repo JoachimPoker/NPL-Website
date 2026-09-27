@@ -17,12 +17,6 @@ function iso(d?: string|null) {
   return x.toISOString().slice(0,10);
 }
 
-function isHRL(name: string|null|undefined, buy_in_raw: string|null|undefined) {
-  const n = (name ?? "").toLowerCase();
-  if (n.includes("high roller")) return true;
-  const num = Number((buy_in_raw ?? "").replace(/[^0-9.]/g, ""));
-  return Number.isFinite(num) && num >= 1000;
-}
 
 function displayName(forename?: string|null, surname?: string|null, display_name?: string|null, consent?: boolean) {
   const f = (forename ?? "").trim();
@@ -57,7 +51,7 @@ export async function GET(req: NextRequest) {
     if (seasonId === "current") {
       const { data, error } = await supabase
         .from("seasons")
-        .select("id,label,start_date,end_date,method,cap_x,is_active")
+        .select("id,label:name,start_date,end_date,method,cap_x,is_active")
         .eq("is_active", true)
         .maybeSingle<SeasonRow>();
       if (error || !data) return bad(500, "Active season not found", { error: error?.message });
@@ -66,7 +60,7 @@ export async function GET(req: NextRequest) {
       const sid = Number(seasonId);
       const { data, error } = await supabase
         .from("seasons")
-        .select("id,label,start_date,end_date,method,cap_x,is_active")
+        .select("id,label:name,start_date,end_date,method,cap_x,is_active")
         .eq("id", sid)
         .maybeSingle<SeasonRow>();
       if (error || !data) return bad(404, "Season not found", { error: error?.message });
@@ -82,16 +76,18 @@ export async function GET(req: NextRequest) {
   }
 
   // 1) Get events in this series (optionally inside season range)
-  //    We try multiple possible column names for series mapping to be robust.
-  const evSel = "id,name,start_date,buy_in_raw,site_name,series_id,festival_id";
-  let evQuery = supabase.from("events").select(evSel);
-  // match series id on possible columns
-  evQuery = evQuery.or(`series_id.eq.${seriesId},series.eq.${seriesId},series_slug.eq.${seriesId}`);
+  const seriesNum = Number(seriesId);
+  if (!Number.isFinite(seriesNum)) return bad(400, "Invalid seriesId");
+  let evQuery = supabase
+    .from("events")
+    .select("id,start_date,is_high_roller,series_id,festival_id")
+    .eq("series_id", seriesNum)
+    .eq("is_deleted", false);
   if (from) evQuery = evQuery.gte("start_date", from);
   if (to)   evQuery = evQuery.lte("start_date", to);
   const { data: events, error: evErr } = await evQuery;
   if (evErr) return bad(500, evErr.message);
-  const evs = (events ?? []).filter(e => (type === "hrl") === isHRL(e.name, e.buy_in_raw));
+  const evs = (events ?? []).filter(e => (type === "hrl") === !!e.is_high_roller);
   if (!evs.length) {
     return NextResponse.json({ ok: true, series: { id: seriesId, label: `Series ${seriesId}` }, rows: [] });
   }
@@ -101,8 +97,9 @@ export async function GET(req: NextRequest) {
   // 2) Pull results for those events
   const { data: results, error: rErr } = await supabase
     .from("results")
-    .select("player_id, event_id, points, position_of_prize, gdpr_flag")
-    .in("event_id", eventIds);
+    .select("player_id, event_id, points, position_of_prize:finish_position, players:player_id (gdpr)")
+    .in("event_id", eventIds)
+    .eq("is_deleted", false);
   if (rErr) return bad(500, rErr.message);
 
   if (!results?.length) {
@@ -116,7 +113,7 @@ export async function GET(req: NextRequest) {
     const pid = String(r.player_id ?? "");
     if (!pid) continue;
     const arr = byPlayer.get(pid) ?? [];
-    arr.push({ player_id: pid, points: r.points as any, pop: (r as any).position_of_prize ?? null, consent: !!r.gdpr_flag });
+    arr.push({ player_id: pid, points: r.points as any, pop: r.position_of_prize ?? null, consent: !!r.players?.gdpr });
     byPlayer.set(pid, arr);
   }
 
@@ -125,9 +122,9 @@ export async function GET(req: NextRequest) {
   const { data: players, error: pErr } = await supabase
     .from("players")
     .select("id,forename,surname,display_name")
-    .in("id", playerIds);
+    .in("id", playerIds.map(Number));
   if (pErr) return bad(500, pErr.message);
-  const pMap = new Map(players?.map(p => [p.id, p]) ?? []);
+  const pMap = new Map(players?.map(p => [String(p.id), p]) ?? []);
 
   // 5) compute metrics
   type Row = {

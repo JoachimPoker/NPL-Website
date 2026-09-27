@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { TriangleAlert } from "lucide-react";
 
 export default function AdminTools() {
   const [loading, setLoading] = useState(false);
@@ -44,14 +45,14 @@ export default function AdminTools() {
   };
 
   return (
-    <div className="card bg-base-100 shadow-xl border border-error/20">
+    <div className="panel border-error/20">
       <div className="card-body">
         <div className="flex items-center gap-4 mb-4">
-          <div className="w-12 h-12 rounded-lg bg-error/10 flex items-center justify-center text-2xl">
-            ⚠️
+          <div className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-error/10 text-error ring-1 ring-inset ring-error/20">
+            <TriangleAlert size={18} aria-hidden="true" />
           </div>
           <div>
-            <h3 className="text-lg font-bold">Danger Zone</h3>
+            <h3 className="font-display text-lg font-semibold">Danger zone</h3>
             <p className="text-xs text-base-content/60">Maintain and clean the system database.</p>
           </div>
         </div>
@@ -66,8 +67,8 @@ export default function AdminTools() {
 
         {/* MODAL WINDOW */}
         <dialog id="reset_modal" className="modal">
-          <div className="modal-box border border-white/10 shadow-2xl">
-            <h3 className="font-black text-xl uppercase tracking-tighter text-error mb-4">Granular Database Reset</h3>
+          <div className="modal-box border border-base-content/10 shadow-2xl">
+            <h3 className="mb-4 font-display text-xl font-semibold text-error">Database reset</h3>
             <p className="text-sm opacity-70 mb-6">Select exactly what you want to remove. Items not checked will be preserved.</p>
 
             <div className="space-y-3">
@@ -86,7 +87,7 @@ export default function AdminTools() {
                 <input type="checkbox" className="checkbox checkbox-error" checked={options.players} onChange={() => setOptions({...options, players: !options.players})} />
               </label>
 
-              <div className="divider opacity-10">CORE STRUCTURE</div>
+              <div className="divider text-xs text-base-content/40">Core structure</div>
 
               <label className="flex items-center justify-between p-3 bg-error/5 border border-error/10 rounded-lg cursor-pointer hover:bg-error/10 transition-colors">
                 <span className="font-bold text-sm text-error">Seasons & Leagues</span>

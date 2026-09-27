@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { requireAdmin } from "@/lib/adminAuth";
 
 export async function POST(req: NextRequest) {
+  // Service-role client below bypasses RLS: this check is the only thing protecting the data.
+  const gate = await requireAdmin();
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+
   try {
     const { options } = await req.json();
     const supabase = createSupabaseAdminClient();

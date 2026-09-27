@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseRouteClient } from '@/lib/supabaseServer'
+import { isAdminUser } from '@/lib/isAdmin'
 
 type Body = { id: string }
 
 export async function POST(req: Request) {
   const supabase = await createSupabaseRouteClient()
   const { data: ures } = await supabase.auth.getUser()
-  const roles: string[] = ((ures?.user?.app_metadata as any)?.roles ?? []) as string[]
-  const isAdmin = !!ures?.user && (roles.includes('admin') || (ures.user?.user_metadata as any)?.is_admin === true)
+  const isAdmin = isAdminUser(ures?.user)
   if (!isAdmin) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
 
   const b = (await req.json().catch(() => null)) as Body | null

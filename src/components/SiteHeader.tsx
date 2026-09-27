@@ -1,5 +1,8 @@
 import Link from 'next/link'
 import { createSupabaseServerClient } from '@/lib/supabaseServer'
+import { isAdminUser } from '@/lib/isAdmin'
+import SiteNav from '@/components/SiteNav'
+import { Logo } from '@/components/brand/Logo'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,58 +11,16 @@ export default async function SiteHeader() {
   const { data } = await supabase.auth.getUser()
   const user = data?.user
   const email = user?.email ?? null
-  const roles = ((user?.app_metadata as any)?.roles ?? []) as string[]
-  const isAdmin = roles.includes('admin') || !!(user?.user_metadata as any)?.is_admin
+  const isAdmin = isAdminUser(user)
 
   return (
-    // Sticky header with glass effect
-    <header className="sticky top-0 z-50 w-full border-b border-white/5 bg-base-100/90 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        
-        {/* Left: Logo Area */}
-        <div className="flex items-center gap-2">
-          {/* Replace with <img src="/logo.png" /> if you have one */}
-          <div className="flex h-8 w-8 items-center justify-center rounded bg-primary text-primary-content font-bold">
-            N
-          </div>
-          <Link href="/" className="text-xl font-bold tracking-tight">
-            NPL
-          </Link>
-        </div>
+    <header className="sticky top-0 z-50 w-full border-b border-base-content/[0.07] bg-base-200/85 backdrop-blur-md">
+      <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-8 px-4 sm:px-6 lg:px-8">
+        <Link href="/" className="shrink-0" aria-label="National Poker League, home">
+          <Logo className="h-9 w-auto sm:h-11" />
+        </Link>
 
-        {/* Center/Right: Navigation (Uppercase) */}
-        <nav className="hidden md:flex items-center gap-8">
-          <Link href="/leaderboards" className="text-sm font-semibold uppercase tracking-wider text-base-content/80 hover:text-primary transition-colors">
-            Leaderboards
-          </Link>
-          <Link href="/events" className="text-sm font-semibold uppercase tracking-wider text-base-content/80 hover:text-primary transition-colors">
-            Tournaments
-          </Link>
-          <Link href="/players" className="text-sm font-semibold uppercase tracking-wider text-base-content/80 hover:text-primary transition-colors">
-            Players
-          </Link>
-          <Link href="/news" className="text-sm font-semibold uppercase tracking-wider text-base-content/80 hover:text-primary transition-colors">
-            News
-          </Link>
-          {isAdmin && (
-            <Link href="/admin" className="text-sm font-semibold uppercase tracking-wider text-error">
-              Admin
-            </Link>
-          )}
-        </nav>
-
-        {/* Far Right: CTA */}
-        <div className="flex items-center gap-4">
-          {email ? (
-            <form action="/logout" method="post">
-              <button className="btn btn-ghost btn-sm uppercase font-semibold">Log out</button>
-            </form>
-          ) : (
-            <Link href="/login" className="btn btn-primary btn-sm uppercase font-bold px-6">
-              Login / Register
-            </Link>
-          )}
-        </div>
+        <SiteNav isAdmin={isAdmin} signedIn={!!email} />
       </div>
     </header>
   )

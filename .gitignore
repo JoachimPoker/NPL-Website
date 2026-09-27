@@ -23,3 +23,12 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# AI agent skills (local only, never deployed)
+.agents/
+.claude/
+.impeccable/
+skills-lock.json
+
+# Playwright MCP screenshots/logs
+.playwright-mcp/

@@ -20,7 +20,8 @@ export async function POST(req: NextRequest) {
     const { error } = await supabase
       .from("seasons")
       .update({
-        label,
+        name: label,
+        year: new Date(end_date).getFullYear(), // seasons are named after the year they end in
         start_date,
         end_date,
         is_active

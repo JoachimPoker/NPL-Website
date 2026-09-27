@@ -84,22 +84,22 @@ export default function AdminSeasonDashboard({ params }: { params: Promise<{ id:
   }
 
   return (
-    <div className="container mx-auto max-w-5xl py-8 px-4 space-y-8">
+    <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
       {/* Header */}
-      <div className="flex justify-between items-center border-b border-white/5 pb-4">
+      <div className="flex justify-between items-center border-b border-base-content/[0.07] pb-4">
         <div>
-          <div className="text-xs font-bold uppercase text-primary mb-1">Admin Dashboard</div>
-          <h1 className="text-4xl font-black uppercase italic">{isNew ? "Create Season" : season.label}</h1>
+          <div className="eyebrow mb-2 text-primary">Seasons</div>
+          <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">{isNew ? "Create Season" : season.label}</h1>
         </div>
-        <Link href="/admin/seasons" className="btn btn-sm btn-ghost">Back to List</Link>
+        <Link href="/admin/seasons" className="btn btn-sm btn-ghost">← Seasons</Link>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">
         
         {/* Left Col: Season Settings */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="card bg-base-100 shadow-xl border border-white/5 p-6 space-y-4">
-            <h3 className="text-sm font-bold uppercase opacity-50">Season Settings</h3>
+          <div className="panel p-6 space-y-4">
+            <h3 className="font-display text-lg font-semibold">Season settings</h3>
             
             <div className="form-control">
               <label className="label text-xs font-bold">Name</label>
@@ -120,12 +120,12 @@ export default function AdminSeasonDashboard({ params }: { params: Promise<{ id:
             <div className="form-control">
               <label className="cursor-pointer label justify-start gap-2">
                 <input type="checkbox" className="toggle toggle-success toggle-sm" checked={season.is_active} onChange={e => setSeason({...season, is_active: e.target.checked})} />
-                <span className="text-sm font-bold">Set as Active Season</span>
+                <span className="text-sm font-bold">Active season</span>
               </label>
             </div>
 
-            <button className="btn btn-primary btn-sm w-full font-bold uppercase" onClick={saveSeason} disabled={loading}>
-              {loading ? "Saving..." : "Save Changes"}
+            <button className="btn btn-primary btn-sm w-full" onClick={saveSeason} disabled={loading}>
+              {loading ? "Saving..." : "Save changes"}
             </button>
           </div>
         </div>
@@ -135,11 +135,11 @@ export default function AdminSeasonDashboard({ params }: { params: Promise<{ id:
           <div className="lg:col-span-2 space-y-6">
             <div className="flex justify-between items-end">
               <div>
-                 <h3 className="text-2xl font-black italic uppercase">Leagues</h3>
+                 <h3 className="font-display font-semibold text-2xl">Leagues</h3>
                  <p className="text-xs opacity-50">Manage the different leaderboards for this season.</p>
               </div>
               <button 
-                className="btn btn-sm btn-outline uppercase font-bold"
+                className="btn btn-sm btn-outline"
                 onClick={() => {
                    setEditingLeague({ 
                      season_id: Number(id), label: "", slug: "", scoring_method: "total", scoring_cap: 10, 
@@ -148,16 +148,16 @@ export default function AdminSeasonDashboard({ params }: { params: Promise<{ id:
                    setModalOpen(true);
                 }}
               >
-                + Add League
+                + Add league
               </button>
             </div>
 
             {/* Leagues List */}
             <div className="space-y-4">
-              {season.leagues?.length === 0 && <div className="text-center p-8 opacity-50 italic border border-dashed border-white/10 rounded-xl">No leagues yet. Add one to get started.</div>}
+              {season.leagues?.length === 0 && <div className="text-center p-8 opacity-50 border border-dashed border-base-content/10 rounded-xl">No leagues yet. Add one to get started.</div>}
               
               {season.leagues?.map((league) => (
-                <div key={league.id} className="card bg-base-100 shadow-md border border-white/5 hover:border-primary/50 transition-colors cursor-pointer group"
+                <div key={league.id} className="panel hover:border-primary/50 transition-colors cursor-pointer group"
                    onClick={() => { setEditingLeague(league); setModalOpen(true); }}
                 >
                   <div className="card-body p-4 flex-row justify-between items-center">
@@ -252,8 +252,8 @@ function LeagueModal({ league, seasonId, onClose, onSave }: { league: League, se
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm p-4">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-base-100 rounded-xl shadow-2xl p-6 space-y-4 border border-white/10 overflow-y-auto max-h-[90vh]">
-        <h3 className="text-lg font-bold uppercase border-b border-white/5 pb-2">
+      <div className="panel relative w-full max-w-lg p-6 space-y-4 overflow-y-auto max-h-[90vh]">
+        <h3 className="font-display font-semibold text-lg border-b border-base-content/[0.07] pb-2">
           {league.id ? "Edit League" : "New League"}
         </h3>
         
@@ -268,7 +268,7 @@ function LeagueModal({ league, seasonId, onClose, onSave }: { league: League, se
             </div>
         </div>
 
-        <div className="divider text-xs font-bold opacity-30">SCORING RULES</div>
+        <div className="divider text-xs text-base-content/40">Scoring rules</div>
 
         <div className="grid grid-cols-2 gap-4">
             <div className="form-control">
@@ -285,7 +285,7 @@ function LeagueModal({ league, seasonId, onClose, onSave }: { league: League, se
         </div>
 
         {/* ✅ UPDATED FILTERS SECTION */}
-        <div className="divider text-xs font-bold opacity-30">FILTERS</div>
+        <div className="divider text-xs text-base-content/40">Filters</div>
 
         <div className="form-control">
             <label className="label text-xs font-bold opacity-50">Included Events</label>
@@ -313,7 +313,7 @@ function LeagueModal({ league, seasonId, onClose, onSave }: { league: League, se
           </div>
         )}
 
-        <div className="divider text-xs font-bold opacity-30">BONUSES</div>
+        <div className="divider text-xs text-base-content/40">Bonuses</div>
         
         <div className="grid grid-cols-2 gap-4">
              <div className="form-control">

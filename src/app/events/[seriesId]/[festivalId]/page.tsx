@@ -1,139 +1,164 @@
-import { headers } from "next/headers";
 import Link from "next/link";
+import { pageMeta } from "@/lib/site";
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import { Trophy } from "lucide-react";
+import PageHeader from "@/components/PageHeader";
+import ShareButton from "@/components/ShareButton";
+import { Initial } from "@/components/HomeLeaderboard";
+import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { venueHref } from "@/lib/venues";
+import { SeriesMark } from "@/components/tournaments/TournamentCards";
+import {
+  type EventSummary, type FestivalSummary, type SeriesRow,
+  gbp, gbpShort, day, dateRange, eventHref, festivalHref, seriesHref, shortEventName,
+} from "@/lib/tournaments";
 
-export const runtime = "nodejs";
-export const revalidate = 60;
+export const revalidate = 300;
 
-/* ---------- Types ---------- */
-type FestivalMeta = {
-  id: string;
-  label: string;
-  start_date?: string | null;
-  end_date?: string | null;
-};
-type EventRow = {
-  id: string;
-  name: string;
-  date?: string | null;
-  venue?: string | null;
-  is_high_roller?: boolean;
-};
+async function load(seriesParam: string, festivalId: string) {
+  const supabase = await createSupabaseServerClient();
+  const { data: festival } = await supabase.from("festival_summary").select("*").eq("id", festivalId).maybeSingle();
+  if (!festival) return null;
 
-/* ---------- Helpers ---------- */
-async function baseUrl() {
-  const h = await headers();
-  const host = (h.get("x-forwarded-host") ?? h.get("host")) ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  return `${proto}://${host}`;
+  const [{ data: series }, { data: events }] = await Promise.all([
+    supabase.from("series").select("id, name, slug, description, logo_url, has_festivals, sort_order").eq("id", festival.series_id ?? -1).maybeSingle(),
+    supabase.from("event_summary").select("*").eq("festival_id", festivalId).order("start_date"),
+  ]);
+  if (!series || (series.slug !== seriesParam && String(series.id) !== seriesParam)) return null;
+
+  // Festival leaderboard: points across all its events, computed in the database
+  // (big festivals have more results than one API request returns).
+  const { data: lb } = await supabase.rpc("festival_leaderboard", { p_festival_id: festivalId, p_limit: 25 });
+  const leaderboard = (lb || []).map((p) => ({ id: p.player_id, name: p.display_name, points: Number(p.points), events: p.events }));
+
+  return { festival: festival as FestivalSummary, series: series as SeriesRow, events: (events || []) as EventSummary[], leaderboard };
 }
 
-async function fetchJSON<T>(path: string): Promise<T | null> {
-  const res = await fetch(`${await baseUrl()}${path}`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return (await res.json()) as T;
+export async function generateMetadata(props: { params: Promise<{ seriesId: string; festivalId: string }> }): Promise<Metadata> {
+  const { seriesId, festivalId } = await props.params;
+  const data = await load(seriesId, festivalId);
+  if (!data) return { title: "Festival" };
+  const { festival: f, series } = data;
+  return pageMeta({
+    title: f.label,
+    description: `${series.name} at ${f.casino ?? "the venue"}, ${dateRange(f.start_date, f.end_date)}: ${f.events} events, ${f.entries.toLocaleString("en-GB")} cashes${f.main_event_winner ? `, Main Event won by ${f.main_event_winner}` : ""}.`,
+    path: festivalHref(series, f.id),
+  });
 }
 
-function normalizeFestival(resp: any): FestivalMeta {
-  const f = resp?.festival ?? resp ?? {};
-  return {
-    id: String(f.id ?? f.festival_id ?? ""),
-    label: String(f.label ?? f.name ?? f.title ?? "Festival"),
-    start_date: typeof f.start_date === "string" ? f.start_date : typeof f.date_from === "string" ? f.date_from : null,
-    end_date: typeof f.end_date === "string" ? f.end_date : typeof f.date_to === "string" ? f.date_to : null,
-  };
-}
-
-function normalizeEvents(resp: any): EventRow[] {
-  const arr: any[] = (Array.isArray(resp?.events) ? resp.events : undefined) ?? (Array.isArray(resp) ? resp : []) ?? [];
-  return arr.map((e) => ({
-    id: String(e.id ?? e.event_id ?? ""),
-    name: String(e.name ?? e.event_name ?? "Event"),
-    date: typeof e.date === "string" ? e.date : typeof e.event_date === "string" ? e.event_date : null,
-    venue: typeof e.venue === "string" ? e.venue : typeof e.location === "string" ? e.location : null,
-    is_high_roller: Boolean(e.is_high_roller ?? e.is_hrl ?? e.hrl ?? false),
-  }));
-}
-
-/* ---------- Page ---------- */
-export default async function FestivalPage(props: {
-  params: Promise<{ seriesId: string; festivalId: string }>;
-}) {
-  const params = await props.params;
-  const { seriesId, festivalId } = params;
-
-  const metaResp = await fetchJSON<any>(`/api/festivals/${encodeURIComponent(festivalId)}`);
-  const eventsResp = await fetchJSON<any>(`/api/events/list?festivalId=${encodeURIComponent(festivalId)}`);
-
-  const meta = metaResp ? normalizeFestival(metaResp) : { id: festivalId, label: `Festival ${festivalId}` };
-  const events = normalizeEvents(eventsResp);
+export default async function FestivalPage(props: { params: Promise<{ seriesId: string; festivalId: string }> }) {
+  const { seriesId, festivalId } = await props.params;
+  const data = await load(seriesId, festivalId);
+  if (!data) notFound();
+  const { festival, series, events, leaderboard } = data;
 
   return (
-    <div className="container mx-auto max-w-7xl space-y-8 py-8 px-4">
-      {/* Header */}
-      <div className="flex flex-col gap-2 border-b border-white/5 pb-6">
-        <nav className="text-xs font-bold uppercase tracking-widest text-base-content/40 flex gap-2 mb-2">
-          <Link href="/events" className="hover:text-primary transition-colors">Events</Link> 
-          <span>/</span> 
-          <Link href={`/events/${seriesId}`} className="hover:text-primary transition-colors">Series</Link>
-        </nav>
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-4xl font-black uppercase italic tracking-tighter text-white">
-              {meta.label}
-            </h1>
-            <p className="text-base-content/60 font-medium mt-1">
-              {meta.start_date || "TBA"} <span className="mx-2 text-primary">•</span> {meta.end_date || "TBA"}
-            </p>
+    <>
+      <PageHeader
+        eyebrow={
+          <nav aria-label="Breadcrumb" className="flex items-center gap-2">
+            <Link href="/events" className="hover:text-primary">Tournaments</Link>
+            <span className="text-base-content/30">/</span>
+            <Link href={seriesHref(series)} className="hover:text-primary">{series.name}</Link>
+          </nav>
+        }
+        title={festival.label.replace(/\s·\s\w{3}\s\d{4}$/, "")}
+        description={
+          <>
+            {dateRange(festival.start_date, festival.end_date)}
+            {festival.casino && (
+              <> · <Link href={venueHref(festival.casino)} className="hover:text-primary">{festival.casino}</Link></>
+            )}
+          </>
+        }
+        actions={
+          <div className="flex items-center gap-4">
+            <ShareButton title={festival.label} />
+            <SeriesMark series={series} size="lg" />
           </div>
-        </div>
-      </div>
+        }
+      >
+        <dl className="grid max-w-3xl grid-cols-2 gap-6 sm:grid-cols-4">
+          <Headline label="Events" value={String(festival.events)} />
+          <Headline label="Cashes" value={festival.entries.toLocaleString("en-GB")} />
+          <Headline label="Paid out" value={gbpShort(Number(festival.paid_out))} />
+          <Headline label="Main Event" value={festival.main_event_winner ?? "–"} small />
+        </dl>
+      </PageHeader>
 
-      {/* Events Table Card */}
-      <div className="card bg-base-100 shadow-xl border border-white/5 overflow-hidden">
-        <div className="card-header p-6 border-b border-white/5 flex items-center justify-between">
-          <h3 className="text-xl font-bold uppercase tracking-wide">Schedule</h3>
-          <span className="badge badge-outline text-xs font-bold uppercase">{events.length} Events</span>
-        </div>
-        
-        <div className="p-0 overflow-x-auto">
-          {!events.length ? (
-            <div className="p-12 text-center text-base-content/50 italic">No events found.</div>
-          ) : (
-            <table className="table table-lg w-full">
-              <thead>
-                <tr className="bg-base-200/50 text-xs uppercase text-base-content/60 border-b border-white/5">
-                  <th className="w-32">Date</th>
-                  <th>Event</th>
-                  <th>Venue</th>
-                  <th className="text-center">Type</th>
-                  <th className="text-right">Action</th>
+      <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-12 lg:px-8">
+        <section className="panel overflow-hidden lg:col-span-7" aria-labelledby="schedule">
+          <div className="border-b border-base-content/[0.07] px-6 py-5">
+            <h2 id="schedule" className="font-display text-xl font-semibold tracking-tight">Schedule &amp; winners</h2>
+          </div>
+          <ol className="divide-y divide-base-content/[0.06]">
+            {events.map((e) => (
+              <li key={e.id}>
+                <Link href={eventHref(e.id)} className="group grid grid-cols-[auto_1fr_auto] items-center gap-4 px-6 py-4 transition-colors hover:bg-base-content/[0.03]">
+                  <time className="w-14 font-mono text-xs uppercase text-base-content/45">
+                    {day(e.start_date, { weekday: "short" })}<br />{day(e.start_date)}
+                  </time>
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium transition-colors group-hover:text-primary">
+                      {shortEventName(e.name)}
+                      {e.is_high_roller && <span className="badge badge-secondary badge-xs ml-2 align-middle">HR</span>}
+                    </span>
+                    <span className="flex items-center gap-1.5 truncate text-sm text-base-content/55">
+                      <Trophy size={13} className="shrink-0 text-primary" aria-hidden="true" /> {e.winner_name ?? "–"}
+                    </span>
+                  </span>
+                  <span className="text-right font-mono text-xs text-base-content/50">
+                    <span className="block">{e.buy_in ? gbp(Number(e.buy_in)) : "Free"}</span>
+                    <span className="block">{e.entries} cashes</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <section className="panel overflow-hidden lg:col-span-5" aria-labelledby="festival-standings">
+          <div className="border-b border-base-content/[0.07] px-6 py-5">
+            <h2 id="festival-standings" className="font-display text-xl font-semibold tracking-tight">Festival leaderboard</h2>
+            <p className="text-sm text-base-content/45">League points earned across this festival</p>
+          </div>
+          <table className="table w-full">
+            <thead>
+              <tr>
+                <th className="w-12 pl-6 text-center">#</th>
+                <th>Player</th>
+                <th className="text-right">Events</th>
+                <th className="pr-6 text-right">Points</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leaderboard.map((p, i) => (
+                <tr key={p.id} className={i < 3 ? "bg-primary/[0.035]" : ""}>
+                  <td className="pl-6 text-center font-mono text-sm text-base-content/60">{i + 1}</td>
+                  <td>
+                    <Link href={`/players/${p.id}`} className="group flex items-center gap-3 font-medium">
+                      <Initial name={p.name} />
+                      <span className="truncate transition-colors group-hover:text-primary">{p.name}</span>
+                    </Link>
+                  </td>
+                  <td className="text-right font-mono text-sm text-base-content/60">{p.events}</td>
+                  <td className="pr-6 text-right font-mono text-sm font-semibold">{p.points.toFixed(2)}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {events.map((e) => (
-                  <tr key={e.id} className="hover:bg-base-200/30 transition-colors border-b border-base-200/50 last:border-0">
-                    <td className="font-mono text-sm opacity-70">{e.date ?? "TBA"}</td>
-                    <td className="font-bold text-white text-lg">
-                      {e.name}
-                    </td>
-                    <td className="text-sm opacity-60">{e.venue ?? "—"}</td>
-                    <td className="text-center">
-                      <span className={`badge badge-sm font-bold uppercase tracking-wide ${e.is_high_roller ? "badge-secondary text-secondary-content" : "badge-ghost opacity-50"}`}>
-                        {e.is_high_roller ? "High Roller" : "NPL"}
-                      </span>
-                    </td>
-                    <td className="text-right">
-                      <button className="btn btn-xs btn-outline uppercase font-bold disabled:opacity-50" disabled>
-                        View Results
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+              ))}
+            </tbody>
+          </table>
+        </section>
       </div>
+    </>
+  );
+}
+
+function Headline({ label, value, small = false }: { label: string; value: string; small?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <dt className="eyebrow">{label}</dt>
+      <dd className={`mt-1 truncate font-display font-semibold tracking-tight ${small ? "text-lg leading-8" : "text-2xl"}`}>{value}</dd>
     </div>
   );
 }

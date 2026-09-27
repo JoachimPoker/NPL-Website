@@ -3,39 +3,37 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+const LINKS = [
+  { label: "Dashboard", href: "/admin" },
+  { label: "Import", href: "/admin/import" },
+  { label: "Seasons", href: "/admin/seasons" },
+  { label: "Leagues", href: "/admin/leagues" },
+  { label: "Series", href: "/admin/series" },
+  { label: "Festivals", href: "/admin/festivals" },
+  { label: "Events", href: "/admin/events" },
+  { label: "Players", href: "/admin/players" },
+  { label: "Schedule", href: "/admin/schedule" },
+  { label: "Badges", href: "/admin/badges" },
+  { label: "News", href: "/admin/news" },
+];
+
+/** Admin section links, styled like the site's main navigation. */
 export default function AdminNav() {
   const pathname = usePathname();
-
-  const links = [
-    { label: "Dashboard", href: "/admin" },
-    { label: "Seasons", href: "/admin/seasons" },
-    { label: "Series", href: "/admin/series" },
-    { label: "Events", href: "/admin/events" },
-    { label: "Players", href: "/admin/players" },
-    { label: "Import", href: "/admin/import" },
-  ];
-
-  // Helper to check if link is active
-  const isActive = (href: string) => {
-    if (href === "/admin") return pathname === "/admin";
-    return pathname.startsWith(href);
-  };
+  const isActive = (href: string) => (href === "/admin" ? pathname === "/admin" : pathname.startsWith(href));
 
   return (
-    <nav className="flex items-center gap-1 overflow-x-auto no-scrollbar mask-linear-fade">
-      {links.map((link) => {
+    <nav aria-label="Admin" className="no-scrollbar -mx-1 flex min-w-0 items-center gap-0.5 overflow-x-auto">
+      {LINKS.map((link) => {
         const active = isActive(link.href);
         return (
           <Link
             key={link.href}
             href={link.href}
-            className={`
-              btn btn-sm text-xs font-bold uppercase tracking-wider transition-all
-              ${active 
-                ? "btn-primary text-primary-content shadow-glow" 
-                : "btn-ghost text-base-content/60 hover:text-white hover:bg-white/5"
-              }
-            `}
+            aria-current={active ? "page" : undefined}
+            className={`relative shrink-0 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${
+              active ? "bg-base-content/[0.06] text-base-content" : "text-base-content/55 hover:text-base-content"
+            }`}
           >
             {link.label}
           </Link>

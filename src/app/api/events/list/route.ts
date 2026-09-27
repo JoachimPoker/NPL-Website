@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   const supabase = await createSupabaseRouteClient();
   
-  let query = supabase.from("events").select("id, name, start_date, is_high_roller").order("start_date", { ascending: false });
+  let query = supabase.from("events").select("id, name:tournament_name, start_date, is_high_roller").eq("is_deleted", false).order("start_date", { ascending: false });
 
   if (festivalId) {
     query = query.eq("festival_id", festivalId);

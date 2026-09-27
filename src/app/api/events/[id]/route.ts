@@ -13,14 +13,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> } // Fix 1: Promise type
 ) {
   const { id } = await params; // Fix 2: Await params
-  const eventId = id;
+  const eventId = Number(id);
+  if (!Number.isFinite(eventId)) return bad(404, "Event not found");
   
   const supabase = await createSupabaseRouteClient();
 
   // Event
   const { data: ev, error: evErr } = await supabase
     .from("events")
-    .select("id, name, start_date, site_name, buy_in_raw")
+    .select("id, name:tournament_name, start_date, site_name:casino, buy_in_raw:buy_in")
     .eq("id", eventId)
     .maybeSingle();
   if (evErr) return bad(500, evErr.message);
@@ -29,13 +30,14 @@ export async function GET(
   // Results (join for player names, GDPR handled in API)
   const { data: resRows, error: rErr } = await supabase
     .from("results")
-    .select("id, player_id, points, prize_amount, position_of_prize, gdpr_flag, created_at, players:player_id (forename, surname, display_name)")
+    .select("id, player_id, points, prize_amount, position_of_prize:finish_position, created_at, players:player_id (forename, surname, display_name, gdpr)")
     .eq("event_id", eventId)
+    .eq("is_deleted", false)
     .order("points", { ascending: false });
   if (rErr) return bad(500, rErr.message);
 
   const rows = (resRows || []).map((r: any) => {
-    const consent = !!r.gdpr_flag;
+    const consent = !!r.players?.gdpr;
     const forename = r.players?.forename ?? null;
     const surname = r.players?.surname ?? null;
     const display_name_raw = r.players?.display_name ?? null;

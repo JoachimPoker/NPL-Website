@@ -19,8 +19,8 @@ type DataPoint = {
 export default function PlayerPointsChart({ data }: { data: DataPoint[] }) {
   if (!data || data.length < 2) {
     return (
-      <div className="h-64 flex items-center justify-center border border-white/5 rounded-xl bg-base-200/20">
-        <span className="text-sm opacity-50 italic">Not enough history to show rank movement.</span>
+      <div className="h-64 flex items-center justify-center rounded-xl border border-dashed border-base-content/10">
+        <span className="text-sm text-base-content/45">Not enough results yet to chart rank movement.</span>
       </div>
     );
   }
@@ -29,10 +29,10 @@ export default function PlayerPointsChart({ data }: { data: DataPoint[] }) {
     <div className="h-72 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-base-content)" strokeOpacity={0.07} vertical={false} />
           <XAxis 
             dataKey="date" 
-            tick={{ fill: '#ffffff60', fontSize: 10 }} 
+            tick={{ fill: 'var(--color-base-content)', fillOpacity: 0.45, fontSize: 11, fontFamily: 'var(--font-numbers)' }} 
             tickFormatter={(str) => {
               const d = new Date(str);
               return `${d.getDate()}/${d.getMonth()+1}`;
@@ -49,19 +49,19 @@ export default function PlayerPointsChart({ data }: { data: DataPoint[] }) {
             padding={{ top: 20, bottom: 20 }}
           />
           <Tooltip 
-            contentStyle={{ backgroundColor: '#1a1a1a', borderColor: '#333', borderRadius: '8px' }}
-            itemStyle={{ color: '#fff', fontSize: '12px' }}
-            labelStyle={{ color: '#ffffff60', fontSize: '10px', marginBottom: '4px' }}
+            contentStyle={{ backgroundColor: 'var(--color-base-300)', border: '1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent)', borderRadius: '10px' }}
+            itemStyle={{ color: 'var(--color-base-content)', fontSize: '12px', fontFamily: 'var(--font-numbers)' }}
+            labelStyle={{ color: 'var(--color-base-content)', opacity: 0.5, fontSize: '11px', marginBottom: '4px' }}
             formatter={(value: number) => [`#${value}`, "Rank"]}
-            labelFormatter={(label) => new Date(label).toLocaleDateString()}
+            labelFormatter={(label) => new Date(label).toLocaleDateString("en-GB")}
           />
           <Line 
             type="monotone" 
             dataKey="rank" 
-            stroke="#dca54c" 
-            strokeWidth={3}
-            dot={{ fill: '#dca54c', r: 3, strokeWidth: 0 }} 
-            activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }} 
+            stroke="var(--color-primary)"
+            strokeWidth={2.5}
+            dot={{ fill: 'var(--color-primary)', r: 3, strokeWidth: 0 }} 
+            activeDot={{ r: 6, stroke: 'var(--color-base-100)', strokeWidth: 2 }} 
           />
         </LineChart>
       </ResponsiveContainer>

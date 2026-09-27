@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createSupabaseRouteClient } from "@/lib/supabaseServer"
+import { isAdminUser } from "@/lib/isAdmin"
 
 export type AdminUser = {
   id: string
@@ -28,16 +29,7 @@ export async function requireAdmin(): Promise<AdminGate> {
   }
 
   const user = data.user as AdminUser
-  const roles: string[] = Array.isArray(user?.app_metadata?.roles)
-    ? (user!.app_metadata!.roles as string[])
-    : []
-
-  const isAdmin =
-    roles.includes("admin") ||
-    user?.app_metadata?.role === "admin" ||
-    user?.user_metadata?.is_admin === true
-
-  if (!isAdmin) {
+  if (!isAdminUser(user)) {
     return { ok: false, status: 403, error: "Forbidden" }
   }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { isAdminUser } from "@/lib/isAdmin";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
@@ -12,8 +13,7 @@ async function getIsAdmin() {
   );
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
-  return !!user.user_metadata?.is_admin || 
-         (Array.isArray(user.app_metadata?.roles) && user.app_metadata.roles.includes("admin"));
+  return isAdminUser(user);
 }
 
 export async function POST(req: NextRequest) {
@@ -49,11 +49,20 @@ export async function POST(req: NextRequest) {
           ? Number(rawSeriesId) 
           : rawSeriesId;
 
+        // Only touch High Roller when the admin changed it; that choice is then pinned
+        // so weekly imports don't recompute it from the tournament name.
+        const hr = "is_high_roller" in ev
+          ? { is_high_roller: ev.is_high_roller === true || ev.is_high_roller === "true", is_high_roller_locked: true }
+          : {};
+
+        // Same for the series: only when sent, and then pinned against auto-detection.
+        const series = "series_id" in ev ? { series_id: seriesId, series_locked: true } : {};
+
         return adminSupabase
           .from("events")
           .update({
-            series_id: seriesId,
-            is_high_roller: ev.is_high_roller === true || ev.is_high_roller === "true",
+            ...series,
+            ...hr,
             updated_at: new Date().toISOString()
           })
           .eq("id", ev.id);

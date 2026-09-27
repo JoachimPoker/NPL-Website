@@ -1,405 +1,168 @@
-// src/app/compare/page.tsx
-import { headers } from "next/headers";
+import Link from "next/link";
+import { pageMeta } from "@/lib/site";
+import { Suspense } from "react";
+import { Swords } from "lucide-react";
+import PageHeader from "@/components/PageHeader";
+import { Initial } from "@/components/HomeLeaderboard";
+import { getCareer, headToHead, type Career } from "@/lib/career";
+import PlayerSearch from "./PlayerSearch";
 
-export const runtime = "nodejs";
-export const revalidate = 0;
+export const metadata = pageMeta({ title: "Compare players", description: "Put two players side by side: head-to-head record, career numbers and badges.", path: "/compare" });
+export const dynamic = "force-dynamic";
 
-/* ---------- Types ---------- */
-type Profile = {
-  id: string;
-  name: string;
-  aliases: string[];
-  stats: {
-    all_time: { total_points: number; results: number; avg_points: number };
-    current_season: {
-      total_points: number;
-      results: number;
-      avg_points: number;
-      lowest_counted: number;
-    };
-  };
-  recent_results: Array<{
-    result_id: string;
-    event_id: string;
-    event_name: string;
-    event_date: string | null;
-    is_high_roller: boolean;
-    points: number;
-  }>;
-};
+const gbp = (n: number) => `£${Math.round(n).toLocaleString("en-GB")}`;
 
-type RawProfile = any;
-
-/* ---------- Helpers ---------- */
-async function baseUrl() {
-  const h = await headers();
-  const host = (h.get("x-forwarded-host") ?? h.get("host")) ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  return `${proto}://${host}`;
-}
-
-async function fetchJSON<T>(path: string): Promise<T | null> {
-  const res = await fetch(`${await baseUrl()}${path}`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return (await res.json()) as T;
-}
-
-function parseParams(sp: Record<string, string | string[] | undefined>) {
-  const raw = Array.isArray(sp.players) ? sp.players[0] : sp.players;
-  const list = (raw ?? "")
-    .toString()
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  // cap to 4 columns for readability
-  return list.slice(0, 4);
-}
-
-// re-use the robust mapper from the player page
-function mapProfile(json: RawProfile, id: string): Profile | null {
-  if (!json) return null;
-  const p = json.profile ?? {};
-  const s = (json.stats ?? p.stats) ?? {};
-  const at = s.all_time ?? {};
-  const cs = s.current_season ?? {};
-  const recentArr: any[] = Array.isArray(json.recent_results)
-    ? json.recent_results
-    : Array.isArray(p.recent_results)
-    ? p.recent_results
-    : [];
-
-  // name
-  let nameCandidate: string | undefined = p.name;
-  if (!nameCandidate) {
-    const first =
-      (p.forename as string | undefined) ??
-      (p.first_name as string | undefined) ??
-      "";
-    const last =
-      (p.surname as string | undefined) ??
-      (p.last_name as string | undefined) ??
-      "";
-    const combo = `${first} ${last}`.trim();
-    nameCandidate = combo.length > 0 ? combo : undefined;
-  }
-  const finalName =
-    nameCandidate && nameCandidate.length > 0
-      ? nameCandidate
-      : `Player ${id}`;
-
-  return {
-    id: String(p.id ?? json.id ?? id),
-    name: finalName,
-    aliases: Array.isArray(p.aliases) ? p.aliases : [],
-    stats: {
-      all_time: {
-        total_points: Number(at.total_points ?? at.total ?? 0) || 0,
-        results: Number(at.results ?? at.count ?? 0) || 0,
-        avg_points: Number(at.avg_points ?? at.average ?? 0) || 0,
-      },
-      current_season: {
-        total_points: Number(cs.total_points ?? cs.total ?? 0) || 0,
-        results:
-          Number(
-            (cs.results as number | undefined) ??
-              (cs.results_counted as number | undefined) ??
-              (cs.count_used as number | undefined) ??
-              (cs.used as number | undefined) ??
-              0
-          ) || 0,
-        avg_points:
-          Number(
-            (cs.avg_points as number | undefined) ??
-              (cs.avg_counted as number | undefined) ??
-              (cs.average as number | undefined) ??
-              0
-          ) || 0,
-        lowest_counted: Number(cs.lowest_counted ?? cs.lowest ?? 0) || 0,
-      },
-    },
-    recent_results: recentArr.slice(0, 5).map((r: any) => {
-      const rawDate =
-        (r.event_date as string | undefined) ??
-        (r.date as string | undefined) ??
-        (r.start_date as string | undefined) ??
-        "";
-      const event_date = rawDate ? String(rawDate) : null;
-
-      return {
-        result_id: String(
-          r.result_id ?? r.id ?? `${r.event_id ?? "evt"}-${rawDate}`
-        ),
-        event_id: String(r.event_id ?? r.tournament_id ?? r.id ?? ""),
-        event_name: String(
-          r.event_name ?? r.tournament_name ?? r.name ?? "Event"
-        ),
-        event_date,
-        is_high_roller: Boolean(
-          r.is_high_roller ?? r.is_hrl ?? r.hrl ?? false
-        ),
-        points: Number(r.points ?? r.score ?? 0) || 0,
-      };
-    }),
-  };
-}
-
-/* ---------- Page ---------- */
-export default async function ComparePage({
-  searchParams,
-}: {
-  searchParams: Record<string, string | string[] | undefined>;
-}) {
-  const ids = parseParams(searchParams);
-
-  const profiles = await Promise.all(
-    ids.map(async (id) => {
-      const raw = await fetchJSON<RawProfile>(
-        `/api/players/${encodeURIComponent(id)}`
-      );
-      return mapProfile(raw, id);
-    })
-  );
-
-  const valid = profiles.filter(Boolean) as Profile[];
+export default async function ComparePage(props: { searchParams: Promise<{ a?: string; b?: string }> }) {
+  const sp = await props.searchParams;
+  const [a, b] = await Promise.all([
+    sp.a ? getCareer(Number(sp.a)) : Promise.resolve(null),
+    sp.b ? getCareer(Number(sp.b)) : Promise.resolve(null),
+  ]);
 
   return (
-    <div className="space-y-6">
-      {/* Header & picker */}
-      <section className="card bg-base-100 shadow-sm">
-        <div className="card-body">
-          <h1 className="text-2xl font-semibold">Compare players</h1>
-          <p className="text-sm text-base-content/70 mt-1">
-            Enter player IDs (comma-separated), e.g. <code>123,456</code>
-          </p>
-          <form
-            action="/compare"
-            method="get"
-            className="mt-3 flex flex-wrap items-center gap-2"
-          >
-            <input
-              name="players"
-              defaultValue={ids.join(",")}
-              placeholder="Player IDs, comma-separated"
-              className="input input-bordered w-full max-w-md text-sm"
-            />
-            <button
-              className="btn btn-primary btn-sm"
-              type="submit"
-            >
-              Compare
-            </button>
-            {valid.length ? (
-              <a
-                className="btn btn-ghost btn-sm"
-                href={`/leaderboards?scope=season&type=npl&mode=simple&seasonId=current`}
-              >
-                Back to leaderboards →
-              </a>
-            ) : null}
-          </form>
+    <>
+      <PageHeader
+        eyebrow="Head to head"
+        title={a && b ? <>{a.player.name} <span className="text-base-content/35">vs</span> {b.player.name}</> : "Compare players"}
+        description="Career numbers side by side, and who came out on top when they cashed in the same event."
+      />
+
+      <div className="mx-auto w-full max-w-7xl space-y-10 px-4 py-10 sm:px-6 lg:px-8">
+        <div className="grid gap-4 md:grid-cols-2">
+          <Suspense>
+            <Picker career={a} side="a" />
+            <Picker career={b} side="b" />
+          </Suspense>
         </div>
+
+        {a && b ? <Comparison a={a} b={b} /> : (
+          <p className="panel px-6 py-12 text-center text-base-content/55">Pick two players to compare.</p>
+        )}
+      </div>
+    </>
+  );
+}
+
+function Picker({ career, side }: { career: Career; side: "a" | "b" }) {
+  return (
+    <div className="panel space-y-3 p-5">
+      {career ? (
+        <Link href={`/players/${career.player.id}`} className="group flex items-center gap-3">
+          <Initial name={career.player.name} />
+          <span className="font-display text-xl font-semibold transition-colors group-hover:text-primary">{career.player.name}</span>
+        </Link>
+      ) : (
+        <div className="font-display text-xl text-base-content/40">Player {side === "a" ? "one" : "two"}</div>
+      )}
+      <PlayerSearch side={side} label={career ? "Change player…" : "Search a player…"} />
+    </div>
+  );
+}
+
+function Comparison({ a, b }: { a: NonNullable<Career>; b: NonNullable<Career> }) {
+  const h2h = headToHead(a.results, b.results);
+  const rows: { label: string; a: number; b: number; fmt?: (n: number) => string; lowerIsBetter?: boolean }[] = [
+    { label: "Career points", a: a.totals.points, b: b.totals.points, fmt: (n) => n.toFixed(0) },
+    { label: "Cashes", a: a.totals.cashes, b: b.totals.cashes },
+    { label: "Wins", a: a.totals.wins, b: b.totals.wins },
+    { label: "Final tables", a: a.totals.final_tables, b: b.totals.final_tables },
+    { label: "Winnings", a: a.totals.money, b: b.totals.money, fmt: gbp },
+    { label: "Biggest cash", a: a.totals.best_cash?.prize ?? 0, b: b.totals.best_cash?.prize ?? 0, fmt: gbp },
+    { label: "Badges", a: a.totals.badges, b: b.totals.badges },
+  ];
+  const years = [...new Set([...a.seasons, ...b.seasons].map((s) => s.year))].sort((x, y) => y - x);
+
+  return (
+    <>
+      <section className="panel overflow-hidden" aria-label="Career comparison">
+        <table className="table w-full">
+          <thead>
+            <tr>
+              <th className="w-1/3 pl-6 text-right">{a.player.name}</th>
+              <th className="text-center" />
+              <th className="w-1/3 pr-6">{b.player.name}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const fmt = r.fmt ?? ((n: number) => n.toLocaleString("en-GB"));
+              const aWins = r.a > r.b, bWins = r.b > r.a;
+              return (
+                <tr key={r.label}>
+                  <td className={`pl-6 text-right font-mono text-lg ${aWins ? "font-semibold text-primary" : "text-base-content/60"}`}>{fmt(r.a)}</td>
+                  <td className="text-center text-xs uppercase tracking-wider text-base-content/45">{r.label}</td>
+                  <td className={`pr-6 font-mono text-lg ${bWins ? "font-semibold text-primary" : "text-base-content/60"}`}>{fmt(r.b)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </section>
 
-      {!valid.length ? (
-        <div className="card bg-base-100 shadow-sm">
-          <div className="card-body text-sm text-base-content/70">
-            Add some player IDs above to compare.
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* All-time KPIs */}
-          <section className="card bg-base-100 shadow-sm overflow-hidden">
-            <div className="card-body border-b border-base-200 pb-3">
-              <h2 className="font-semibold">All-Time Snapshot</h2>
-            </div>
-            <div className="card-body">
-              <div
-                className="grid gap-4"
-                style={{
-                  gridTemplateColumns: `repeat(${valid.length}, minmax(0, 1fr))`,
-                }}
-              >
-                {valid.map((p) => (
-                  <div
-                    key={p.id}
-                    className="card bg-base-100 border border-base-200"
-                  >
-                    <div className="card-body p-3">
-                      <div className="text-sm font-semibold">
-                        <a
-                          className="link link-primary"
-                          href={`/players/${encodeURIComponent(p.id)}`}
-                        >
-                          {p.name}
-                        </a>
-                      </div>
-                      <div className="mt-2 grid grid-cols-3 gap-2">
-                        <div>
-                          <div className="text-xs text-base-content/60">
-                            Total
-                          </div>
-                          <div className="text-xl font-semibold nums">
-                            {p.stats.all_time.total_points.toFixed(2)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-base-content/60">
-                            Results
-                          </div>
-                          <div className="text-xl font-semibold nums">
-                            {p.stats.all_time.results}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-base-content/60">
-                            Avg
-                          </div>
-                          <div className="text-xl font-semibold nums">
-                            {p.stats.all_time.avg_points.toFixed(2)}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* Current season KPIs */}
-          <section className="card bg-base-100 shadow-sm overflow-hidden">
-            <div className="card-body border-b border-base-200 pb-3">
-              <h2 className="font-semibold">Current Season</h2>
-            </div>
-            <div className="card-body">
-              <div
-                className="grid gap-4"
-                style={{
-                  gridTemplateColumns: `repeat(${valid.length}, minmax(0, 1fr))`,
-                }}
-              >
-                {valid.map((p) => (
-                  <div
-                    key={p.id}
-                    className="card bg-base-100 border border-base-200"
-                  >
-                    <div className="card-body p-3">
-                      <div className="text-sm font-semibold">
-                        <a
-                          className="link link-primary"
-                          href={`/players/${encodeURIComponent(p.id)}`}
-                        >
-                          {p.name}
-                        </a>
-                      </div>
-                      <div className="mt-2 grid grid-cols-4 gap-2">
-                        <div>
-                          <div className="text-xs text-base-content/60">
-                            Total
-                          </div>
-                          <div className="text-xl font-semibold nums">
-                            {p.stats.current_season.total_points.toFixed(2)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-base-content/60">
-                            Results
-                          </div>
-                          <div className="text-xl font-semibold nums">
-                            {p.stats.current_season.results}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-base-content/60">
-                            Avg
-                          </div>
-                          <div className="text-xl font-semibold nums">
-                            {p.stats.current_season.avg_points.toFixed(2)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-base-content/60">
-                            Lowest
-                          </div>
-                          <div className="text-xl font-semibold nums">
-                            {p.stats.current_season.lowest_counted.toFixed(2)}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* Recent results (last 5) */}
-          <section className="card bg-base-100 shadow-sm overflow-hidden">
-            <div className="card-body border-b border-base-200 pb-3">
-              <h2 className="font-semibold">Recent Results</h2>
-            </div>
-            <div className="card-body">
-              <div
-                className="grid gap-4"
-                style={{
-                  gridTemplateColumns: `repeat(${valid.length}, minmax(0, 1fr))`,
-                }}
-              >
-                {valid.map((p) => (
-                  <div key={p.id}>
-                    <div className="text-sm font-semibold mb-2">
-                      <a
-                        className="link link-primary"
-                        href={`/players/${encodeURIComponent(p.id)}`}
-                      >
-                        {p.name}
-                      </a>
-                    </div>
-                    {p.recent_results.length === 0 ? (
-                      <div className="text-sm text-base-content/70">
-                        No recent results.
-                      </div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="table table-xs w-full">
-                          <thead>
-                            <tr>
-                              <th className="text-left">Date</th>
-                              <th className="text-left">Event</th>
-                              <th className="text-right">Pts</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {p.recent_results.map((r) => (
-                              <tr key={r.result_id}>
-                                <td>{r.event_date ?? "—"}</td>
-                                <td>
-                                  <a
-                                    className="link link-hover"
-                                    href={`/events/${encodeURIComponent(
-                                      r.event_id
-                                    )}`}
-                                  >
-                                    {r.event_name}
-                                  </a>
-                                </td>
-                                <td className="text-right nums">
-                                  {r.points.toFixed(2)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-        </>
+      {years.length > 0 && (
+        <section className="panel overflow-hidden" aria-labelledby="seasons-vs">
+          <h2 id="seasons-vs" className="border-b border-base-content/[0.07] px-6 py-5 font-display text-lg font-semibold">NPL finishes by season</h2>
+          <table className="table w-full">
+            <tbody>
+              {years.map((y) => {
+                const sa = a.seasons.find((s) => s.year === y)?.leagues.npl;
+                const sb = b.seasons.find((s) => s.year === y)?.leagues.npl;
+                const aBetter = sa && (!sb || sa.position < sb.position);
+                const bBetter = sb && (!sa || sb.position < sa.position);
+                return (
+                  <tr key={y}>
+                    <td className={`w-1/3 pl-6 text-right font-mono ${aBetter ? "font-semibold text-primary" : "text-base-content/60"}`}>{sa ? `#${sa.position}` : "–"}</td>
+                    <td className="text-center text-sm text-base-content/55">{y}</td>
+                    <td className={`w-1/3 pr-6 font-mono ${bBetter ? "font-semibold text-primary" : "text-base-content/60"}`}>{sb ? `#${sb.position}` : "–"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
       )}
-    </div>
+
+      <section className="panel overflow-hidden" aria-labelledby="h2h">
+        <div className="flex flex-col gap-2 border-b border-base-content/[0.07] px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <h2 id="h2h" className="flex items-center gap-2 font-display text-lg font-semibold">
+            <Swords size={18} className="text-primary" aria-hidden="true" /> Same event, who finished higher?
+          </h2>
+          {h2h.shared.length > 0 && (
+            <div className="font-mono text-sm">
+              <span className={h2h.aAhead > h2h.bAhead ? "font-semibold text-primary" : ""}>{h2h.aAhead}</span>
+              <span className="mx-2 text-base-content/40">–</span>
+              <span className={h2h.bAhead > h2h.aAhead ? "font-semibold text-primary" : ""}>{h2h.bAhead}</span>
+              <span className="ml-2 text-base-content/45">in {h2h.shared.length} shared cash{h2h.shared.length === 1 ? "" : "es"}</span>
+            </div>
+          )}
+        </div>
+        {h2h.shared.length === 0 ? (
+          <p className="px-6 py-10 text-center text-sm text-base-content/50">They haven&apos;t cashed in the same event yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table table-sm w-full">
+              <thead>
+                <tr><th className="pl-6">Date</th><th>Event</th><th className="text-right">{a.player.name}</th><th className="pr-6 text-right">{b.player.name}</th></tr>
+              </thead>
+              <tbody>
+                {h2h.shared.slice(0, 30).map(({ a: ra, b: rb }) => {
+                  const aBetter = (ra.position ?? Infinity) < (rb.position ?? Infinity);
+                  return (
+                    <tr key={ra.event_id}>
+                      <td className="whitespace-nowrap pl-6 font-mono text-xs text-base-content/45">
+                        {ra.date ? new Date(ra.date).toLocaleDateString("en-GB") : "–"}
+                      </td>
+                      <td><Link href={`/events/e/${ra.event_id}`} className="hover:text-primary">{ra.event_name}</Link></td>
+                      <td className={`text-right font-mono ${aBetter ? "font-semibold text-primary" : "text-base-content/60"}`}>#{ra.position ?? "–"}</td>
+                      <td className={`pr-6 text-right font-mono ${!aBetter ? "font-semibold text-primary" : "text-base-content/60"}`}>#{rb.position ?? "–"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </>
   );
 }

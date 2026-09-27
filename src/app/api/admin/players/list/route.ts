@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseRouteClient } from '@/lib/supabaseServer'
+import { isAdminUser } from '@/lib/isAdmin'
 
 export const runtime = 'nodejs'
 export const revalidate = 0
@@ -10,8 +11,7 @@ async function requireAdmin() {
   const supabase = await createSupabaseRouteClient()
   const { data: ures, error } = await supabase.auth.getUser()
   if (error || !ures?.user) return { ok: false as const, status: 401, msg: 'Unauthorized', supabase }
-  const roles: string[] = ((ures.user.app_metadata as any)?.roles ?? []) as string[]
-  const isAdmin = roles.includes('admin') || (ures.user.user_metadata as any)?.is_admin === true
+  const isAdmin = isAdminUser(ures.user)
   if (!isAdmin) return { ok: false as const, status: 403, msg: 'Forbidden', supabase }
   return { ok: true as const, supabase }
 }

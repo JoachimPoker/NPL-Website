@@ -13,7 +13,8 @@ export async function GET(req: NextRequest) {
   if (mode === "recent") {
     const { data, error } = await supabase
       .from("events")
-      .select("id, name, start_date, site_name, buy_in_raw")
+      .select("id, name:tournament_name, start_date, site_name:casino, buy_in_raw:buy_in")
+      .eq("is_deleted", false)
       .lte("start_date", new Date().toISOString().slice(0,10))
       .order("start_date", { ascending: false })
       .limit(limit);
@@ -24,7 +25,8 @@ export async function GET(req: NextRequest) {
   // upcoming (default)
   const { data, error } = await supabase
     .from("events")
-    .select("id, name, start_date, site_name, buy_in_raw")
+    .select("id, name:tournament_name, start_date, site_name:casino, buy_in_raw:buy_in")
+    .eq("is_deleted", false)
     .gte("start_date", new Date().toISOString().slice(0,10))
     .order("start_date", { ascending: true })
     .limit(limit);

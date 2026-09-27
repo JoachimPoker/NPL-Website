@@ -18,7 +18,8 @@ export async function POST(req: NextRequest) {
 
     // Insert only Season fields
     const { data, error } = await supabase.from("seasons").insert({
-      label,
+      name: label,
+      year: new Date(end_date).getFullYear(), // seasons are named after the year they end in
       start_date,
       end_date,
       is_active
@@ -26,11 +27,11 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error;
 
-    // OPTIONAL: Automatically create a default "Global" league for this new season
+    // Create the main league for this new season (add others from the season page)
     await supabase.from("leagues").insert({
       season_id: data.id,
-      label: "Global Standings",
-      slug: "global",
+      label: "National Poker League",
+      slug: "npl",
       scoring_method: "total",
       scoring_cap: 0
     });

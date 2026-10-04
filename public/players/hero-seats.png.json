@@ -1,0 +1,9 @@
+{
+  "prompt": "A cinematic film still, wide landscape, for the header of a poker league's players directory. A final table seen from a low angle at night after play: nine empty leather chairs around a teal felt table, each seat with its own small pool of warm amber light from a low pendant, a few neatly stacked blank seat cards on the rail; the room behind falls into deep petrol-teal darkness with soft bokeh. No people, no hands, no faces, no text, no logos, no chip towers. Film grade: deep petrol-teal shadows (#06191C), warm amber highlights (#F2A33A), fine grain, quiet premium sports-drama look. Subject sits centre-right; the left 45% is dark and calm with no hard vertical edges or posts; the top 12% is dark for a nav bar; the bottom third falls into near-black teal so it dissolves into a dark page.\n",
+  "createdAt": "2026-10-03T19:51:13.483Z",
+  "tool": "impeccable generate-image",
+  "model": "gpt-image-2.5-flare",
+  "refs": [
+    "public/events/hero-floor.png"
+  ]
+}

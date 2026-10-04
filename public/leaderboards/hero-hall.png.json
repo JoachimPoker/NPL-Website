@@ -1,0 +1,9 @@
+{
+  "prompt": "A cinematic film still, wide landscape, for the header of a poker league's leaderboards page. A long tournament hall at night seen from a low, wide angle: rows of empty poker tables with deep teal felt receding into the distance, each under its own warm amber pendant lamp, so the lamps form a long line of light into soft haze. Neat dealer trays and a few face-down cards on the nearest table, no chip towers. No people, no faces, no text, no logos, no signage, no screens. Film grade: deep petrol-teal shadows (#06191C), warm amber highlights (#F2A33A), gentle anamorphic bokeh, fine grain, quiet and premium like a sports-drama film. The left 45% of the frame is darker and calm (it sits behind a title), the lamps and detail sit centre-right; the bottom third falls into near-black teal so it can dissolve into a dark page.\n",
+  "createdAt": "2026-10-03T18:57:43.103Z",
+  "tool": "impeccable generate-image",
+  "model": "gpt-image-2.5-flare",
+  "refs": [
+    ".impeccable/mocks/decision/lb-a.png"
+  ]
+}

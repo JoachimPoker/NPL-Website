@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabaseServer'
 import { isAdminUser } from '@/lib/isAdmin'
 import SiteNav from '@/components/SiteNav'
 import { Logo } from '@/components/brand/Logo'
+import HeaderFrame from '@/components/HeaderFrame'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,14 +15,14 @@ export default async function SiteHeader() {
   const isAdmin = isAdminUser(user)
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-base-content/[0.07] bg-base-200/85 backdrop-blur-md">
-      <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-8 px-4 sm:px-6 lg:px-8">
+    <HeaderFrame>
+      <div className="flex h-[5.75rem] items-center justify-between gap-8 px-4 font-season sm:px-[3.6vw]">
         <Link href="/" className="shrink-0" aria-label="National Poker League, home">
-          <Logo className="h-9 w-auto sm:h-11" />
+          <Logo className="h-9 w-auto sm:h-[3.25rem]" />
         </Link>
 
         <SiteNav isAdmin={isAdmin} signedIn={!!email} />
       </div>
-    </header>
+    </HeaderFrame>
   )
 }

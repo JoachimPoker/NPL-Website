@@ -45,7 +45,6 @@ export default async function AdminFestivalsPage(props: { searchParams: Promise<
     <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-10 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-4 border-b border-base-content/[0.07] pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="eyebrow mb-2 text-primary">Admin</div>
           <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">Festivals</h1>
           <p className="max-w-2xl text-sm text-base-content/60">
             A festival is a series at one venue over a run of dates. They&apos;re detected automatically after each import;

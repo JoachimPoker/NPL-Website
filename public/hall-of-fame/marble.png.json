@@ -1,0 +1,9 @@
+{
+  "prompt": "A flat, straight-on texture photograph of polished dark green-teal marble, filling the whole frame edge to edge, evenly lit, no perspective, no objects, no border, no text. Deep petrol-teal base (#0f3337 to #0a2427) with fine, soft, light sea-grey and pale veins (#93ADAC at low contrast) running diagonally, a few thin wispy veins and faint cloudy mottling, subtle polish; calm and premium, low contrast so text can sit on top and stay readable. Uniform across the frame so it can be tiled or cropped anywhere.\n",
+  "createdAt": "2026-10-03T20:59:32.726Z",
+  "tool": "impeccable generate-image",
+  "model": "gpt-image-2.5-flare",
+  "refs": [
+    ".impeccable/mocks/decision/hof-a.png"
+  ]
+}

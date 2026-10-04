@@ -1,6 +1,7 @@
+import Image from "next/image";
 import Link from "next/link";
 import { pageMeta } from "@/lib/site";
-import PageHeader from "@/components/PageHeader";
+import { getSiteImages } from "@/lib/siteImages";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
 
 export const metadata = pageMeta({ title: "News", description: "League news, results round-ups and announcements.", path: "/news" });
@@ -17,9 +18,11 @@ type Article = {
 };
 
 const fmt = (d: string | null) =>
-  d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "";
+  d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "";
+
 
 export default async function NewsPage() {
+  const img = await getSiteImages();
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("news")
@@ -34,56 +37,65 @@ export default async function NewsPage() {
   const rest = articles.filter((a) => a !== featured);
 
   return (
-    <>
-      <PageHeader eyebrow="News" title="From the league" description="Announcements and tournament reports from the National Poker League." />
-
-      <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        {!featured ? (
-          <div className="panel px-6 py-16 text-center">
-            <div className="font-display text-lg">No news yet</div>
-            <p className="mt-1 text-sm text-base-content/50">Check back soon for announcements and tournament reports.</p>
-          </div>
+    <div className="bg-season-night font-season text-season-ink">
+      {/* The lead story opens the page as a full-width still, like the home page. */}
+      <section aria-labelledby="lead" className="relative isolate flex min-h-[clamp(30rem,40vw,42rem)] items-end overflow-hidden">
+        {featured?.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={featured.image_url} alt="" className="absolute inset-0 -z-10 h-full w-full object-cover" />
         ) : (
-          <div className="grid gap-10 lg:grid-cols-12">
-            <Link href={`/news/${featured.id}`} className="group panel relative overflow-hidden lg:col-span-7">
-              {featured.image_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={featured.image_url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40 transition-opacity group-hover:opacity-50" />
-              ) : (
-                <div className="felt-glow pointer-events-none absolute inset-0 opacity-70" aria-hidden="true" />
-              )}
-              <div className="relative flex h-full min-h-72 flex-col justify-end gap-4 bg-gradient-to-t from-base-100 via-base-100/60 to-transparent p-8 md:p-10">
-                <div className="eyebrow text-primary/90">{featured.category ?? "Featured"}</div>
-                <h2 className="font-display text-3xl font-semibold leading-tight tracking-tight transition-colors group-hover:text-primary md:text-5xl">
-                  {featured.title}
-                </h2>
-                {featured.excerpt && <p className="max-w-lg text-base-content/70">{featured.excerpt}</p>}
-                <time className="font-mono text-xs text-base-content/50">{fmt(featured.published_at)}</time>
-              </div>
-            </Link>
-
-            <div className="divide-y divide-base-content/[0.07] lg:col-span-5">
-              {rest.map((s) => (
-                <Link key={s.id} href={`/news/${s.id}`} className="group flex gap-4 py-6 first:pt-0">
-                  {s.image_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.image_url} alt="" className="h-20 w-28 shrink-0 rounded-lg object-cover" />
-                  )}
-                  <article className="min-w-0 space-y-2">
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="eyebrow">{s.category ?? "News"}</span>
-                      <time className="font-mono text-xs text-base-content/40">{fmt(s.published_at)}</time>
-                    </div>
-                    <h3 className="font-display text-xl font-semibold transition-colors group-hover:text-primary">{s.title}</h3>
-                    {s.excerpt && <p className="line-clamp-2 text-sm text-base-content/55">{s.excerpt}</p>}
-                  </article>
-                </Link>
-              ))}
-              {!rest.length && <p className="text-sm text-base-content/50">More stories coming soon.</p>}
-            </div>
-          </div>
+          <Image src={img.home_hero} alt="" fill priority sizes="100vw" className="-z-10 object-cover object-[50%_35%]" />
         )}
-      </div>
-    </>
+        <div aria-hidden="true" className="absolute inset-x-0 top-0 -z-10 h-28 bg-gradient-to-b from-season-night/60 to-transparent" />
+        <div aria-hidden="true" className="absolute inset-x-0 bottom-0 -z-10 h-[70%] bg-gradient-to-t from-season-night from-10% via-season-night/75 via-50% to-transparent" />
+        <div aria-hidden="true" className="absolute inset-y-0 left-0 -z-10 w-full bg-gradient-to-r from-season-night/80 via-season-night/30 to-transparent sm:w-[65%]" />
+        <div className="rise w-full px-4 pb-[clamp(2.5rem,4vw,4rem)] pt-[7.25rem] sm:px-[3.6vw]">
+          <h1 className="sr-only">News</h1>
+          {featured ? (
+            <Link href={`/news/${featured.id}`} className="group block max-w-[46rem]">
+              <p className="text-[1rem] font-medium text-season-ink/80">
+                {featured.category ?? "News"} <span aria-hidden="true">·</span> <time dateTime={featured.published_at ?? undefined}>{fmt(featured.published_at)}</time>
+              </p>
+              <h2 id="lead" className="mt-2 text-[clamp(2.25rem,4vw,4.5rem)] font-bold leading-[1.04] tracking-[-0.012em] text-balance decoration-season-ink/40 underline-offset-[0.12em] group-hover:underline">
+                {featured.title}
+              </h2>
+              {featured.excerpt && <p className="mt-3 max-w-[36em] text-[clamp(1.0625rem,1.24vw,1.3125rem)] leading-relaxed text-season-ink/85">{featured.excerpt}</p>}
+            </Link>
+          ) : (
+            <>
+              <h2 id="lead" className="text-[clamp(2.5rem,4.4vw,4.375rem)] font-bold leading-[1.02] tracking-[-0.012em]">News</h2>
+              <p className="mt-2 text-[clamp(1.0625rem,1.45vw,1.375rem)] text-season-muted">No news yet. Announcements and tournament reports will appear here.</p>
+            </>
+          )}
+        </div>
+      </section>
+
+      {rest.length > 0 && (
+        <section aria-labelledby="more-news" className="px-4 pb-[clamp(2.5rem,4vw,4rem)] sm:px-[3.6vw]">
+          <h2 id="more-news" className="text-[clamp(1.3125rem,1.6vw,1.6875rem)] font-semibold leading-tight">More from the league</h2>
+          <ul className="mt-5 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
+            {rest.map((s, i) => (
+              <li key={s.id}>
+                <Link href={`/news/${s.id}`} className="group block">
+                  <div className="relative aspect-[16/9] overflow-hidden border border-white/[0.08]">
+                    {s.image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={s.image_url} alt="" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+                    ) : (
+                      <Image src={img.rooms[i % img.rooms.length]} alt="" fill sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, 100vw" className="object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+                    )}
+                  </div>
+                  <p className="mt-4 text-[0.9375rem] text-season-muted">
+                    {s.category ?? "News"} <span aria-hidden="true">·</span> <time dateTime={s.published_at ?? undefined}>{fmt(s.published_at)}</time>
+                  </p>
+                  <h3 className="mt-1 text-[1.375rem] font-semibold leading-snug decoration-season-ink/40 underline-offset-4 group-hover:underline">{s.title}</h3>
+                  {s.excerpt && <p className="mt-2 line-clamp-2 text-[1rem] leading-relaxed text-season-ink/75">{s.excerpt}</p>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
   );
 }

@@ -30,7 +30,7 @@ export default async function EditPlayerPage(props: { params: Promise<{ id: stri
       
       <div className="flex flex-col gap-4 border-b border-base-content/[0.07] pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="eyebrow mb-2 text-primary">Players · #{player.id}</div>
+          <Link href="/admin/players" className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-[0.9375rem] font-medium text-season-ink/75 hover:text-season-ink"><span aria-hidden="true">←</span> Players</Link>
           <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">
             {[player.forename, player.surname].filter(Boolean).join(" ") || "Unknown player"}
           </h1>

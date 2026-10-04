@@ -146,3 +146,16 @@ export async function deleteFestivalAction(formData: FormData) {
   await refreshDerived([f?.season_id ?? null]);
   redirect("/admin/festivals?deleted=1");
 }
+
+/** Save only a festival's photo (kept apart from the main form, which also locks the festival from detection). */
+export async function saveFestivalPhotoAction(formData: FormData) {
+  const db = await gate();
+  const id = text(formData.get("id"));
+  const url = text(formData.get("image_url"));
+  if (!id) throw new Error("Missing festival");
+  if (url && !/^https:\/\//i.test(url)) throw new Error("The photo must be an https:// address.");
+  const { error } = await db.from("festivals").update({ image_url: url, updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/admin/festivals/${id}`);
+  revalidatePath("/", "layout");
+}

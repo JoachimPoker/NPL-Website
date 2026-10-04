@@ -2,14 +2,13 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
-import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
+import { Figtree } from "next/font/google";
 import Providers from "./providers";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 
-const heading = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-heading" });
-const body = Geist({ subsets: ["latin"], variable: "--font-body" });
-const numbers = Geist_Mono({ subsets: ["latin"], variable: "--font-numbers" });
+// "The Season" redesign face (DESIGN.md is rewritten from the finished build).
+const season = Figtree({ subsets: ["latin"], variable: "--font-figtree", weight: ["400", "500", "600", "700"] });
 
 const DESCRIPTION =
   "Season standings, tournament results and player stats for the National Poker League.";
@@ -26,7 +25,7 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: SITE_NAME, description: DESCRIPTION },
 };
 
-export const viewport: Viewport = { themeColor: "#1c173d", colorScheme: "dark" };
+export const viewport: Viewport = { themeColor: "#06191c", colorScheme: "dark" };
 
 export default function RootLayout({
   children,
@@ -34,7 +33,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" data-theme="npl" className={`${heading.variable} ${body.variable} ${numbers.variable}`}>
+    <html lang="en" data-theme="npl" className={season.variable}>
       <body className="font-sans min-h-screen bg-base-200 text-base-content antialiased flex flex-col">
         <a
           href="#main"

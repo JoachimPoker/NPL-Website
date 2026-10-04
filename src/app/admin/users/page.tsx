@@ -1,176 +1,88 @@
 // src/app/admin/users/page.tsx
-"use client";
+import RuledHeading from "@/components/RuledHeading";
+import { requireAdmin } from "@/lib/adminAuth";
+import { createSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { isAdminUser } from "@/lib/isAdmin";
+import AddAdminForm from "./AddAdminForm";
+import { deleteUserAction, removeAdminAction } from "./actions";
 
-import { useEffect, useState } from "react";
+export const dynamic = "force-dynamic";
 
-type U = {
-  id: string;
-  email: string | null;
-  app_metadata?: any;
-  user_metadata?: any;
-  created_at?: string;
-  last_sign_in_at?: string | null;
-};
+const when = (d?: string | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "Never");
 
-export default function AdminUsersPage() {
-  const [list, setList] = useState<U[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
-
-  async function load() {
-    setLoading(true);
-    setErr(null);
-    setOk(null);
-    try {
-      const res = await fetch("/api/admin/users/list", { cache: "no-store" });
-      const js = await res.json();
-      if (!res.ok) throw new Error(js?._error || res.statusText);
-      setList(js.users || []);
-    } catch (e: any) {
-      setErr(e?.message || String(e));
-    } finally {
-      setLoading(false);
-    }
+export default async function AdminUsersPage() {
+  const g = await requireAdmin();
+  const me = g.ok ? g.user.id : null;
+  let users: { id: string; email?: string; created_at: string; last_sign_in_at?: string | null; app_metadata: Record<string, unknown> }[] = [];
+  let loadError: string | null = null;
+  try {
+    const { data, error } = await createSupabaseAdminClient().auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (error) loadError = error.message;
+    users = (data?.users ?? []) as typeof users;
+  } catch (e) {
+    loadError = (e as Error).message;
   }
+  const admins = users.filter((u) => isAdminUser(u));
+  const others = users.filter((u) => !isAdminUser(u));
 
-  useEffect(() => {
-    void load();
-  }, []);
-
-  async function setRoles(user_id: string, roles: string[]) {
-    setLoading(true);
-    setErr(null);
-    setOk(null);
-    try {
-      const res = await fetch("/api/admin/users/set-role", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ user_id, roles }),
-      });
-      const js = await res.json();
-      if (!res.ok) throw new Error(js?._error || res.statusText);
-      setOk("Updated roles.");
-      void load();
-    } catch (e: any) {
-      setErr(e?.message || String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
+  const row = (u: (typeof users)[number], admin: boolean) => (
+    <li key={u.id} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-white/[0.07] py-3.5">
+      <div className="min-w-0">
+        <p className="truncate text-[1.0625rem] font-medium">
+          {u.email ?? "(no email)"}
+          {u.id === me && <span className="ml-2 text-[0.875rem] font-normal text-season-muted">you</span>}
+        </p>
+        <p className="text-[0.875rem] text-season-muted">
+          Added {when(u.created_at)} · last signed in {when(u.last_sign_in_at)}
+        </p>
+      </div>
+      {u.id !== me && (
+        <form action={admin ? removeAdminAction : deleteUserAction}>
+          <input type="hidden" name="id" value={u.id} />
+          <button className="btn btn-ghost btn-sm">{admin ? "Remove admin access" : "Delete account"}</button>
+        </form>
+      )}
+    </li>
+  );
 
   return (
-    <div className="space-y-6">
-      {/* Local toolbar (top-level admin header comes from /admin/layout.tsx) */}
-      <div className="flex items-center justify-between">
-        <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">Admin — Users</h1>
-        <button
-          className="btn btn-outline btn-sm"
-          onClick={() => void load()}
-          disabled={loading}
-          type="button"
-        >
-          Refresh
-        </button>
+    <div className="space-y-[clamp(2rem,3.5vw,3rem)] px-4 py-[clamp(1.75rem,3vw,2.75rem)] sm:px-[3.6vw]">
+      <div>
+        <h1 className="text-[clamp(2rem,3.2vw,3rem)] font-bold leading-[1.04] tracking-[-0.012em]">Users</h1>
+        <p className="mt-2 max-w-[52em] text-[1.0625rem] text-season-muted">
+          Only admins have accounts; there is no public sign-up. Add a new admin by email, then ask them to open the sign-in page and choose &ldquo;Forgot
+          password?&rdquo; to set their password.
+        </p>
       </div>
 
-      {err && (
-        <div className="alert alert-error text-sm">
-          <span>{err}</span>
+      <section aria-labelledby="add">
+        <RuledHeading id="add">Add an admin</RuledHeading>
+        <div className="mt-4 max-w-[40rem]">
+          <AddAdminForm />
         </div>
-      )}
-      {ok && (
-        <div className="alert alert-success text-sm">
-          <span>{ok}</span>
-        </div>
-      )}
+      </section>
 
-      <div className="panel overflow-x-auto">
-        <div className="card-body p-0">
-          <table className="table table-sm w-full">
-            <thead>
-              <tr>
-                <th className="text-left">Email</th>
-                <th className="text-left">Roles</th>
-                <th className="text-left">Last sign-in</th>
-                <th className="text-left w-56">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((u) => {
-                const roles: string[] = ((u.app_metadata?.roles) ?? []) as string[];
-                const isAdmin = roles.includes("admin");
-                return (
-                  <tr key={u.id}>
-                    <td>{u.email}</td>
-                    <td>
-                      {roles.length ? (
-                        <div className="flex flex-wrap gap-1">
-                          {roles.map((r) => (
-                            <span
-                              key={r}
-                              className="badge badge-ghost badge-xs"
-                            >
-                              {r}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td>{u.last_sign_in_at ?? "—"}</td>
-                    <td className="flex flex-wrap gap-2">
-                      <button
-                        className="btn btn-outline btn-xs"
-                        type="button"
-                        onClick={() =>
-                          void setRoles(
-                            u.id,
-                            Array.from(new Set([...roles, "admin"]))
-                          )
-                        }
-                        disabled={loading || isAdmin}
-                        title={isAdmin ? "Already admin" : "Grant admin"}
-                      >
-                        Make admin
-                      </button>
-                      <button
-                        className="btn btn-outline btn-xs btn-error"
-                        type="button"
-                        onClick={() =>
-                          void setRoles(
-                            u.id,
-                            roles.filter((r) => r !== "admin")
-                          )
-                        }
-                        disabled={loading || !isAdmin}
-                        title={!isAdmin ? "Not an admin" : "Remove admin"}
-                      >
-                        Remove admin
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {list.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={4} className="py-4 text-sm text-base-content/70">
-                    No users found.
-                  </td>
-                </tr>
-              )}
-              {loading && (
-                <tr>
-                  <td colSpan={4} className="py-4 text-sm text-base-content/70">
-                    Loading…
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {loadError ? (
+        <p role="alert" className="rounded-[3px] border border-season-down/50 bg-season-down/[0.08] px-4 py-3 text-[0.9375rem] text-[#ffb3b1]">
+          Couldn&apos;t load the accounts: {loadError}. Check that SUPABASE_SERVICE_ROLE_KEY is set on the server.
+        </p>
+      ) : (
+        <>
+          <section aria-labelledby="admins">
+            <RuledHeading id="admins">Admins ({admins.length})</RuledHeading>
+            <ul className="mt-3">{admins.map((u) => row(u, true))}</ul>
+          </section>
+          {others.length > 0 && (
+            <section aria-labelledby="others">
+              <RuledHeading id="others">Other accounts ({others.length})</RuledHeading>
+              <p className="mt-2 text-[0.9375rem] text-season-muted">
+                Accounts without admin access, for example from the old public sign-up. They can&apos;t do anything on the site; you can delete them.
+              </p>
+              <ul className="mt-3">{others.map((u) => row(u, false))}</ul>
+            </section>
+          )}
+        </>
+      )}
     </div>
   );
 }

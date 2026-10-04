@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { SeriesBanner } from "@/components/tournaments/TournamentCards";
+import { Badge } from "@/components/tournaments/SeasonCalendar";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
 import { runAutoAssignAction, saveSeriesAction } from "./actions";
 
@@ -39,7 +39,6 @@ export default async function AdminSeriesPage(props: { searchParams: Promise<{ a
     <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
       <div className="flex flex-col gap-4 border-b border-base-content/[0.07] pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="eyebrow mb-2 text-primary">Admin</div>
           <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">Series &amp; Festivals</h1>
           <p className="max-w-2xl text-sm text-base-content/60">
             Events are put into a series automatically when their name matches the series&apos; pattern, and grouped
@@ -63,7 +62,7 @@ export default async function AdminSeriesPage(props: { searchParams: Promise<{ a
       <div className="grid gap-8 lg:grid-cols-3">
         <div className="panel lg:col-span-2 overflow-hidden">
           <table className="table table-sm w-full">
-            <thead className="bg-base-200/50 text-[10px] uppercase">
+            <thead className="bg-base-200/50 text-[0.8125rem]">
               <tr>
                 <th>Series</th>
                 <th className="hidden md:table-cell">Pattern</th>
@@ -78,7 +77,7 @@ export default async function AdminSeriesPage(props: { searchParams: Promise<{ a
                     <Link href={`/admin/series/${s.id}`} className="flex items-center gap-3 font-semibold hover:text-primary">
                       {/* Fixed-width logo column so the names line up */}
                       <span className="flex w-44 shrink-0 items-center">
-                        <SeriesBanner series={s} size="sm" />
+                        <Badge series={s} className="h-8" />
                       </span>
                       {s.name}
                     </Link>

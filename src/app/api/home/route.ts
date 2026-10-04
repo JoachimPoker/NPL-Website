@@ -99,7 +99,7 @@ export async function GET() {
       previousDate = prevRows?.[0]?.snapshot_date;
     }
 
-    let movementMap = new Map<string, number>();
+    const movementMap = new Map<string, number>();
 
     if (latestDate) {
       // Step C: Limit lookup to Top 50 to respect Supabase limits
@@ -184,8 +184,8 @@ export async function GET() {
           rows.map((r) => ({ ...r, display_name: maskById(String(r.player_id), r.display_name), movement: r.movement })),
         ])
       ),
-      trending_players: (trendingRes.data || []).map((r: any) => ({ ...r, display_name: maskById(String(r.player_id), r.display_name) })),
-      biggest_gainers: (gainersRes.data || []).map((r: any) => ({ ...r, display_name: maskById(String(r.player_id), r.display_name) })),
+      trending_players: (trendingRes.data || []).map((r: any) => ({ ...r, display_name: maskById(String(r.player_id), r.display_name), is_anonymized: !consentMap.get(String(r.player_id)) })),
+      biggest_gainers: (gainersRes.data || []).map((r: any) => ({ ...r, display_name: maskById(String(r.player_id), r.display_name), is_anonymized: !consentMap.get(String(r.player_id)) })),
       // Last paid place in the main league (null when no prizes are set: the site uses the top 10).
       prize_places: prizePlaces,
       season_meta: season

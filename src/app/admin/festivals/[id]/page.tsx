@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
-import { deleteFestivalAction, saveFestivalAction } from "../actions";
+import { deleteFestivalAction, saveFestivalAction, saveFestivalPhotoAction } from "../actions";
+import ImageField from "@/components/admin/ImageField";
 
 export const dynamic = "force-dynamic";
 
@@ -91,10 +92,12 @@ export default async function FestivalEditPage(props: { params: Promise<{ id: st
     <div className="mx-auto w-full max-w-7xl space-y-8 px-4 py-10 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-4 border-b border-base-content/[0.07] pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="eyebrow mb-2 text-primary">
-            Festivals{festival?.season?.name ? ` · ${festival.season.name}` : ""}
-            {festival && (festival.is_auto ? " · detected automatically" : " · set by hand")}
-          </div>
+          <Link href="/admin/festivals" className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-[0.9375rem] font-medium text-season-ink/75 hover:text-season-ink"><span aria-hidden="true">←</span> Festivals</Link>
+          {festival && (
+            <p className="mb-1 text-[0.9375rem] text-season-muted">
+              {festival.season?.name ?? "No season"}{festival.is_auto ? " · detected automatically" : " · set by hand"}
+            </p>
+          )}
           <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">{isNew ? "New festival" : festival.label}</h1>
           {festival && (
             <p className="text-sm text-base-content/60">
@@ -195,8 +198,25 @@ export default async function FestivalEditPage(props: { params: Promise<{ id: st
         </div>
       </form>
 
+      {/* The festival's photo: its own form, so saving it doesn't switch the festival to "set by hand". */}
+      {festival && "image_url" in festival && (
+        <form action={saveFestivalPhotoAction} className="panel">
+          <div className="card-body gap-4 p-6">
+            <input type="hidden" name="id" value={festival.id} />
+            <div>
+              <h2 className="text-[1.125rem] font-semibold">Festival photo</h2>
+              <p className="text-[0.9375rem] text-season-muted">Shown on the home page, the festival&apos;s page, its strip in the season calendar and its events&apos; pages. Without one, the series photo is used. Best size: 2400 × 1350 px (16:9), subject in the centre.</p>
+            </div>
+            <ImageField name="image_url" folder="photos" label="Photo" defaultValue={(festival as { image_url?: string | null }).image_url ?? ""} wide />
+            <div>
+              <button className="btn btn-primary btn-sm">Save photo</button>
+            </div>
+          </div>
+        </form>
+      )}
+
       {festival && (
-        <form action={deleteFestivalAction} className="flex items-center justify-between gap-4 rounded-xl border border-error/30 bg-error/[0.04] p-5">
+        <form action={deleteFestivalAction} className="flex items-center justify-between gap-4 rounded-[3px] border border-error/30 bg-error/[0.04] p-5">
           <input type="hidden" name="id" value={festival.id} />
           <p className="text-sm text-base-content/70">
             Delete this festival. Its events are released and automatic detection may group them again.

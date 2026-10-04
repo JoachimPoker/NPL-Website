@@ -1,0 +1,9 @@
+{
+  "prompt": "A cinematic film still, wide landscape, for the header of a poker player's profile page. A dark glass trophy cabinet in a quiet card room at night, seen slightly from the side: several shelves with plain unbranded trophies (cups, a tall crystal obelisk, small plaques with no readable text) lit from above by small warm amber spotlights, reflections in the glass, deep petrol-teal shadows. No people, no faces, no text, no logos, no readable engraving, no chips, no cards. Film grade: deep petrol-teal (#06191C) shadows, warm amber (#F2A33A) highlights, soft bokeh, fine grain, quiet and premium like a sports-drama film. The cabinet and trophies sit in the right 55% of the frame; the left 45% is dark, calm room so a name can sit over it; the bottom third falls into near-black teal so it dissolves into a dark page; the top 12% is dark so a nav bar can sit over it.\n",
+  "createdAt": "2026-10-03T19:05:41.678Z",
+  "tool": "impeccable generate-image",
+  "model": "gpt-image-2.5-flare",
+  "refs": [
+    ".impeccable/mocks/decision/pp-a.png"
+  ]
+}

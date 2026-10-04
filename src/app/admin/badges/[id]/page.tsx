@@ -32,9 +32,9 @@ export default async function AdminBadgeEditPage(props: { params: Promise<{ id: 
     <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
       <div className="flex items-end justify-between border-b border-base-content/[0.07] pb-6">
         <div className="flex items-center gap-4">
-          {d && <BadgeMedal tier={d.tier} icon={d.icon} imageUrl={d.image_url} size="lg" />}
+          {d && <BadgeMedal def={d} size="lg" />}
           <div>
-            <div className="eyebrow mb-2 text-primary">Badges</div>
+            <Link href="/admin/badges" className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-[0.9375rem] font-medium text-season-ink/75 hover:text-season-ink"><span aria-hidden="true">←</span> Badges</Link>
             <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">{isNew ? "New badge" : d!.name}</h1>
           </div>
         </div>
@@ -93,7 +93,7 @@ export default async function AdminBadgeEditPage(props: { params: Promise<{ id: 
         </div>
 
         {isSeriesTitle ? (
-          <div className="rounded-lg bg-base-200/60 p-4 text-sm">
+          <div className="rounded-[3px] bg-base-200/60 p-4 text-sm">
             <input type="hidden" name="condition_type" value="series_title" />
             <span className="font-semibold">Series title.</span>{" "}
             <span className="text-base-content/60">

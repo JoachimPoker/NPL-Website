@@ -1,50 +1,67 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Menu, X } from 'lucide-react'
 
+/** The main menu on wide screens: the sections people come for, in the order they use them. */
 const LINKS = [
   { label: 'Leaderboards', href: '/leaderboards' },
   { label: 'Tournaments', href: '/events' },
   { label: 'Players', href: '/players' },
-  { label: 'Badges', href: '/badges' },
   { label: 'Hall of Fame', href: '/hall-of-fame' },
+  { label: 'Badges', href: '/badges' },
   { label: 'News', href: '/news' },
+  { label: 'About', href: '/about' },
+]
+
+/** The phone menu has room for everything, grouped like the footer. */
+const GROUPS: { title: string; links: { label: string; href: string }[] }[] = [
+  { title: 'League', links: [{ label: 'Leaderboards', href: '/leaderboards' }, { label: 'Hall of Fame', href: '/hall-of-fame' }, { label: 'Badges', href: '/badges' }, { label: 'About the league', href: '/about' }] },
+  { title: 'Results', links: [{ label: 'Tournaments', href: '/events' }, { label: 'Venues', href: '/venues' }, { label: 'News', href: '/news' }] },
+  { title: 'Players', links: [{ label: 'All players', href: '/players' }, { label: 'Compare players', href: '/compare' }] },
 ]
 
 export default function SiteNav({ isAdmin, signedIn }: { isAdmin: boolean; signedIn: boolean }) {
   const pathname = usePathname()
-  const [open, setOpen] = useState(false)
-
-  // Close the mobile menu whenever the route changes.
-  useEffect(() => setOpen(false), [pathname])
+  // The menu is open for the page it was opened on, so moving to another page closes it.
+  const [openOn, setOpenOn] = useState<string | null>(null)
+  const open = openOn === pathname
+  const setOpen = (fn: (o: boolean) => boolean) => setOpenOn(fn(open) ? pathname : null)
 
   const links = isAdmin ? [...LINKS, { label: 'Admin', href: '/admin' }] : LINKS
-  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
+  const groups = isAdmin ? [...GROUPS, { title: 'Staff', links: [{ label: 'Admin', href: '/admin' }] }] : GROUPS
+  // The Players menu item covers profiles and Compare too; Tournaments covers venues.
+  const isActive = (href: string) =>
+    pathname === href ||
+    pathname.startsWith(`${href}/`) ||
+    (href === '/players' && pathname.startsWith('/compare')) ||
+    (href === '/events' && pathname.startsWith('/venues'))
 
   const account = signedIn ? (
     <form action="/logout" method="post">
-      <button className="btn btn-ghost btn-sm font-medium text-base-content/70">Log out</button>
+      <button className="inline-flex h-10 items-center rounded-[3px] px-3 text-[0.9375rem] font-medium text-white/75 transition-colors hover:bg-white/[0.06] hover:text-white">
+        Log out
+      </button>
     </form>
   ) : null // only admins sign in; the link lives in the footer
 
   return (
     <>
       <nav aria-label="Main" className="hidden flex-1 items-center justify-end gap-6 lg:flex">
-        <ul className="flex items-center gap-5 lg:gap-7">
+        <ul className="flex items-center gap-5 xl:gap-8">
           {links.map((l) => (
             <li key={l.href}>
               <Link
                 href={l.href}
                 aria-current={isActive(l.href) ? 'page' : undefined}
-                className={`relative block py-2 text-sm font-semibold uppercase tracking-wide transition-colors ${
-                  isActive(l.href) ? 'text-base-content' : 'text-base-content/60 hover:text-base-content'
+                className={`relative block py-2 text-[0.95rem] font-medium tracking-[0.01em] transition-colors xl:text-[1.0625rem] ${
+                  isActive(l.href) ? 'text-white' : 'text-white/85 hover:text-white'
                 }`}
               >
                 {l.label}
-                {isActive(l.href) && <span className="absolute inset-x-0 bottom-0.5 h-0.5 rounded-full bg-primary" />}
+                {isActive(l.href) && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-season-amber" aria-hidden="true" />}
               </Link>
             </li>
           ))}
@@ -54,30 +71,39 @@ export default function SiteNav({ isAdmin, signedIn }: { isAdmin: boolean; signe
 
       <button
         type="button"
-        className="btn btn-ghost btn-sm btn-square lg:hidden"
+        className="inline-flex size-11 items-center justify-center rounded-[3px] text-white transition-colors hover:bg-white/[0.06] lg:hidden"
         aria-label={open ? 'Close menu' : 'Open menu'}
         aria-expanded={open}
+        aria-controls="mobile-menu"
         onClick={() => setOpen((o) => !o)}
       >
-        {open ? <X size={20} /> : <Menu size={20} />}
+        {open ? <X size={22} aria-hidden="true" /> : <Menu size={22} aria-hidden="true" />}
       </button>
 
       {open && (
-        <div className="absolute inset-x-0 top-20 border-b border-base-content/[0.07] bg-base-200 shadow-2xl lg:hidden">
-          <nav aria-label="Main" className="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-4">
-            {links.map((l) => (
-              <Link
-                key={l.href}
-                href={l.href}
-                aria-current={isActive(l.href) ? 'page' : undefined}
-                className={`rounded-lg px-3 py-3 text-base font-semibold uppercase tracking-wide ${
-                  isActive(l.href) ? 'bg-base-100 text-primary' : 'text-base-content/80'
-                }`}
-              >
-                {l.label}
-              </Link>
+        <div id="mobile-menu" className="absolute inset-x-0 top-[5.75rem] max-h-[calc(100dvh-5.75rem)] overflow-y-auto border-b border-white/[0.08] bg-season-night lg:hidden">
+          <nav aria-label="Main" className="grid gap-6 px-4 pb-6 pt-4 sm:grid-cols-3 sm:px-[3.6vw]">
+            {groups.map((g) => (
+              <div key={g.title}>
+                <p className="mb-1 px-3 text-[0.875rem] font-medium text-season-muted">{g.title}</p>
+                <ul>
+                  {g.links.map((l) => (
+                    <li key={l.href}>
+                      <Link
+                        href={l.href}
+                        aria-current={pathname === l.href || pathname.startsWith(`${l.href}/`) ? 'page' : undefined}
+                        className={`flex min-h-12 items-center rounded-[3px] px-3 text-[1.125rem] font-medium ${
+                          pathname === l.href || pathname.startsWith(`${l.href}/`) ? 'bg-season-card text-white' : 'text-white/85 hover:bg-white/[0.04]'
+                        }`}
+                      >
+                        {l.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-            {account && <div className="mt-3 border-t border-base-content/[0.07] pt-4">{account}</div>}
+            {account && <div className="border-t border-white/[0.08] pt-4 sm:col-span-3">{account}</div>}
           </nav>
         </div>
       )}

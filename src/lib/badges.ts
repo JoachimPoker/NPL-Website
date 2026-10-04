@@ -88,13 +88,14 @@ export const CONDITION_LABEL: Record<string, string> = {
   season_rank_hr: "High Roller League finishing position",
   season_rank_lrl: "Low Roller League finishing position",
   high_roller_win: "Win a High Roller event",
-  festival_champion: "Top a festival leaderboard",
+  festival_champion: "Top a festival leaderboard (retired)",
+  alltime_leader: "First on a series' all-time leaderboard",
   special: "Awarded by hand",
 };
 
 /** Condition types an admin can pick for each kind. */
 export const ACHIEVEMENT_CONDITIONS = ACHIEVEMENT_TYPES;
-export const BADGE_CONDITIONS = ["season_rank_npl", "season_rank_hr", "season_rank_lrl", "high_roller_win", "festival_champion", "special"];
+export const BADGE_CONDITIONS = ["season_rank_npl", "season_rank_hr", "season_rank_lrl", "high_roller_win", "alltime_leader", "special"];
 
 /** The number(s) a condition compares against. */
 export function conditionField(type: string): { field: "min" | "ranks" | null; label: string } {

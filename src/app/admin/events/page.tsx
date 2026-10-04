@@ -135,7 +135,6 @@ export default async function AdminEventsPage(props: { searchParams: Promise<SP>
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-10 sm:px-6 lg:px-8">
       <div className="border-b border-base-content/[0.07] pb-6">
-        <div className="eyebrow mb-2 text-primary">Admin</div>
         <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">Events</h1>
         <p className="max-w-2xl text-sm text-base-content/60">
           Filter, sort and fix events. Tick several to change their High Roller status, series or festival together;

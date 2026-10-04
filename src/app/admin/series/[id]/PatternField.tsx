@@ -53,7 +53,7 @@ export default function PatternField({ defaultValue }: { defaultValue: string })
       </p>
       {error && <p className="mt-2 text-xs text-error">{error}</p>}
       {result && (
-        <div className="mt-2 rounded-lg bg-base-200/50 p-3 text-xs">
+        <div className="mt-2 rounded-[3px] bg-base-200/50 p-3 text-xs">
           <div className="font-bold">
             Matches {result.count} event{result.count === 1 ? "" : "s"}
             <span className="font-normal opacity-60"> (events matching an earlier series in the list stay there)</span>

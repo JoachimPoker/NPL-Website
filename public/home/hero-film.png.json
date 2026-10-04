@@ -1,0 +1,9 @@
+{
+  "prompt": "Recreate this exact photograph, same composition, framing, objects and lighting (the empty high-backed leather chair at a final table under one warm overhead lamp, the dealer button on the table, the blurred dark card room behind), but colour-graded like a feature film: deep petrol-teal shadows and ambient tones (#06191C to #0F3337) with the lamp light and highlights kept warm amber (#F2A33A). The bottom fifth should fall off into deep teal shadow. No people's faces, no readable signage or brand names, no chip stacks or chip piles, no neon, no slot machines. Photographic, cinematic, shallow depth of field, film grain, colour-graded teal-and-amber: deep petrol-teal shadows (#06191C to #0F3337) and warm amber lamp highlights (#F2A33A). No text, no UI, no border.",
+  "createdAt": "2026-10-03T18:43:26.818Z",
+  "tool": "impeccable generate-image",
+  "model": "gpt-image-2.5-flare",
+  "refs": [
+    "public/home/hero-photo.png"
+  ]
+}

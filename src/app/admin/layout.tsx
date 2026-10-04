@@ -21,22 +21,24 @@ export default async function AdminLayout({ children }: Props) {
   const email = user.email || "Admin";
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col bg-season-night font-season text-season-ink">
       {/* Admin toolbar, under the site header */}
-      <div className="sticky top-20 z-40 w-full border-b border-base-content/[0.07] bg-base-200/85 backdrop-blur-md">
-        <div className="mx-auto flex h-12 max-w-7xl items-center justify-between gap-6 px-4 sm:px-6 lg:px-8">
+      <div className="sticky top-[5.75rem] z-40 w-full border-b border-white/[0.08] bg-[#041214]/95 backdrop-blur-md">
+        <div className="flex h-12 items-center justify-between gap-6 px-4 sm:px-[3.6vw]">
           <div className="flex min-w-0 items-center gap-4">
-            <span className="hidden shrink-0 rounded-md bg-primary/12 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-primary ring-1 ring-inset ring-primary/25 sm:inline">
+            <span className="hidden shrink-0 rounded-[3px] px-2 py-0.5 text-[0.8125rem] font-semibold text-season-amber shadow-[inset_0_0_0_1px_rgb(242_163_58/0.6)] sm:inline">
               Admin
             </span>
             <AdminNav />
           </div>
 
-          <div className="hidden shrink-0 items-center gap-4 text-xs text-base-content/50 md:flex">
-            <span className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-success" aria-hidden="true" />
-              <span className="font-mono">{email}</span>
-            </span>
+          <div className="hidden shrink-0 items-center gap-2 text-[0.875rem] text-season-muted md:flex">
+            <span className="size-2 rounded-full bg-season-up" aria-hidden="true" />
+            <span>{email}</span>
+            <span aria-hidden="true">·</span>
+            <form action="/logout" method="post">
+              <button type="submit" className="underline decoration-season-muted/40 underline-offset-4 hover:text-season-ink">Sign out</button>
+            </form>
           </div>
         </div>
       </div>

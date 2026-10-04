@@ -8,6 +8,8 @@ export type SeriesRow = {
   slug: string;
   description: string | null;
   logo_url: string | null;
+  /** The series photo (admin), once the site_images migration has added the column. */
+  image_url?: string | null;
   has_festivals: boolean;
   sort_order: number;
 };

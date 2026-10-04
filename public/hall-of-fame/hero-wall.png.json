@@ -1,0 +1,9 @@
+{
+  "prompt": "A cinematic film still, wide landscape, for the header of a poker league's Hall of Fame. A long dark marble hall seen at an angle: on the right wall a receding row of tall engraved bronze-and-dark-teal plaques, each with a round medal at its top and unreadable engraved lines below, each plaque lit by a small warm amber picture light; polished floor reflecting the lights; a quiet, reverent, museum atmosphere. No people, no faces, no readable text, no logos, no chips, no cards. Film grade: deep petrol-teal shadows (#06191C), warm amber highlights (#F2A33A), fine grain, premium sports-drama look. The plaques sit in the right 55% of the frame; the left 45% is dark calm marble with no hard edges; the top 12% is dark for a nav bar; the bottom third falls into near-black teal so it dissolves into a dark page.\n",
+  "createdAt": "2026-10-03T20:55:58.257Z",
+  "tool": "impeccable generate-image",
+  "model": "gpt-image-2.5-flare",
+  "refs": [
+    ".impeccable/mocks/decision/hof-a.png"
+  ]
+}

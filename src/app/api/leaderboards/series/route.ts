@@ -175,9 +175,7 @@ export async function GET(req: NextRequest) {
   // dense ranks
   let lastKey = "__";
   let pos = 0;
-  let seen = 0;
   const out = rows.slice(0, limit).map(r => {
-    seen++;
     const key = `${r.total_points}|${r.best_single}|${r.average_used}|${r.total_count}`;
     if (key !== lastKey) { pos++; lastKey = key; }
     return {

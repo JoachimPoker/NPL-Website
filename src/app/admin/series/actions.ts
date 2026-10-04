@@ -58,6 +58,8 @@ export async function saveSeriesAction(formData: FormData) {
     is_active: isNew ? true : formData.get("is_active") === "on",
     sort_order: Number(formData.get("sort_order")) || 100,
     logo_url: logo,
+    // Only sent once the series photo column exists (the field is hidden until then).
+    ...(formData.has("image_url") ? { image_url: text(formData.get("image_url")) } : {}),
     updated_at: new Date().toISOString(),
   };
 

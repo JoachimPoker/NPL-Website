@@ -1,15 +1,12 @@
 'use client'
 
 import { useEffect, useState, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser'
+import { AuthShell, Field, Notice, Submit, authLink } from '@/components/auth/AuthShell'
 
-// 1. Move logic into a separate component
 function ResetPasswordContent() {
   const supabase = createSupabaseBrowserClient()
-  const sp = useSearchParams()
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const mode = sp.get('mode') 
   const [email, setEmail] = useState('')
   const [newPw, setNewPw] = useState('')
   const [busy, setBusy] = useState(false)
@@ -36,7 +33,7 @@ function ResetPasswordContent() {
       setErr(error.message)
       return
     }
-    setMsg('Check your email for a reset link.')
+    setMsg('If that email has an account, a reset link is on its way. Check your inbox and spam folder.')
   }
 
   async function updatePassword(e: React.FormEvent) {
@@ -50,102 +47,40 @@ function ResetPasswordContent() {
       setErr(error.message)
       return
     }
-    setMsg('Password updated. You can close this tab and sign in.')
+    setMsg('Password updated. You can now sign in with your new password.')
   }
 
   if (hasSessionFromRecovery) {
     return (
-      <div className="flex flex-1 items-center justify-center px-4 py-16">
-        <div className="w-full max-w-md">
-          <div className="panel">
-            <div className="space-y-5 p-7 sm:p-8">
-              <h1 className="font-display text-3xl font-semibold tracking-tight">Set a new password</h1>
-
-              <form onSubmit={updatePassword} className="space-y-3">
-                <input
-                  className="input w-full"
-                  type="password"
-                  placeholder="New password"
-                aria-label="New password"
-                  value={newPw}
-                  onChange={(e) => setNewPw(e.target.value)}
-                  required
-                  minLength={6}
-                />
-                <button
-                  className="btn btn-primary w-full"
-                  disabled={busy}
-                  type="submit"
-                >
-                  {busy ? 'Updating…' : 'Update password'}
-                </button>
-              </form>
-
-              {err && (
-                <div role="alert" className="alert alert-error text-sm">
-                  <span>{err}</span>
-                </div>
-              )}
-              {msg && (
-                <div role="alert" className="alert alert-success text-sm">
-                  <span>{msg}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      <AuthShell title="Set a new password">
+        <form onSubmit={updatePassword} className="space-y-4">
+          <Field label="New password" type="password" placeholder="At least 6 characters" value={newPw} onChange={(e) => setNewPw(e.target.value)} required minLength={6} autoComplete="new-password" />
+          <Submit busy={busy} busyLabel="Updating…">Update password</Submit>
+        </form>
+        {err && <Notice kind="error">{err}</Notice>}
+        {msg && <Notice kind="success">{msg}</Notice>}
+      </AuthShell>
     )
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center px-4 py-16">
-      <div className="w-full max-w-md">
-        <div className="panel">
-          <div className="space-y-5 p-7 sm:p-8">
-            <h1 className="font-display text-3xl font-semibold tracking-tight">Reset password</h1>
-
-            <form onSubmit={sendReset} className="space-y-3">
-              <input
-                className="input w-full"
-                type="email"
-                placeholder="you@domain.com"
-                aria-label="Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-              />
-              <button
-                className="btn btn-primary w-full"
-                disabled={busy}
-                type="submit"
-              >
-                {busy ? 'Sending…' : 'Send reset link'}
-              </button>
-            </form>
-
-            {err && (
-              <div role="alert" className="alert alert-error text-sm">
-                <span>{err}</span>
-              </div>
-            )}
-            {msg && (
-              <div role="alert" className="alert alert-info text-sm">
-                <span>{msg}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+    <AuthShell title="Reset your password" lede="Enter your account email and we’ll send you a link to choose a new password.">
+      <form onSubmit={sendReset} className="space-y-4">
+        <Field label="Email" type="email" placeholder="you@domain.com" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+        <Submit busy={busy} busyLabel="Sending…">Send reset link</Submit>
+      </form>
+      {err && <Notice kind="error">{err}</Notice>}
+      {msg && <Notice kind="info">{msg}</Notice>}
+      <p className="mt-4">
+        <Link href="/login" className={authLink}>Back to sign in</Link>
+      </p>
+    </AuthShell>
   )
 }
 
-// 2. Wrap it in Suspense for the main export
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<div className="p-10 text-center text-base-content/50">Loading…</div>}>
+    <Suspense fallback={<div className="flex flex-1 items-center justify-center bg-season-night p-10 text-season-muted">Loading…</div>}>
       <ResetPasswordContent />
     </Suspense>
   )

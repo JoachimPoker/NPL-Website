@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
@@ -42,9 +43,8 @@ export default async function AdminEventPage(props: { params: Promise<{ id: stri
     <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
       <div className="flex flex-col gap-4 border-b border-base-content/[0.07] pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="eyebrow mb-2 text-primary">
-            {ev.season?.name ?? "No season"} · Event #{ev.id}
-          </div>
+          <Link href="/admin/events" className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-[0.9375rem] font-medium text-season-ink/75 hover:text-season-ink"><span aria-hidden="true">←</span> Events</Link>
+          <p className="mb-1 text-[0.9375rem] text-season-muted">{ev.season?.name ?? "No season"} · Event #{ev.id}</p>
           <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">{ev.tournament_name ?? "Unnamed event"}</h1>
           <p className="mt-1 text-sm text-base-content/60">
             {ev.casino ?? "Unknown venue"} ·{" "}
@@ -166,7 +166,7 @@ export default async function AdminEventPage(props: { params: Promise<{ id: stri
 
           <div className="panel overflow-x-auto">
             <table className="table table-sm w-full">
-              <thead className="bg-base-200/50 text-[10px] uppercase">
+              <thead className="bg-base-200/50 text-[0.8125rem]">
                 <tr>
                   <th className="w-12 text-center">#</th>
                   <th>Player</th>
@@ -193,7 +193,7 @@ export default async function AdminEventPage(props: { params: Promise<{ id: stri
                         <span className="ml-1 text-error" title="Penalty">{Number(r.penalty_points)}</span>
                       )}
                     </td>
-                    <td className="text-center text-xs">{r.player?.gdpr ? "✓" : <span className="opacity-40">masked</span>}</td>
+                    <td className="text-center text-xs">{r.player?.gdpr ? <Check size={15} className="mx-auto text-season-up" aria-label="Consent given" /> : <span className="opacity-60">masked</span>}</td>
                   </tr>
                 ))}
                 {!results?.length && (
@@ -211,7 +211,7 @@ export default async function AdminEventPage(props: { params: Promise<{ id: stri
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="panel p-4">
-      <div className="text-[10px] font-bold uppercase tracking-wider opacity-50">{label}</div>
+      <div className="text-[0.8125rem] text-season-muted">{label}</div>
       <div className="mt-1 font-mono text-lg">{value}</div>
     </div>
   );

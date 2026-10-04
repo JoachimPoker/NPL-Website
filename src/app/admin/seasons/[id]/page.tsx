@@ -88,7 +88,7 @@ export default function AdminSeasonDashboard({ params }: { params: Promise<{ id:
       {/* Header */}
       <div className="flex justify-between items-center border-b border-base-content/[0.07] pb-4">
         <div>
-          <div className="eyebrow mb-2 text-primary">Seasons</div>
+          <Link href="/admin/seasons" className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-[0.9375rem] font-medium text-season-ink/75 hover:text-season-ink"><span aria-hidden="true">←</span> Seasons</Link>
           <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">{isNew ? "Create Season" : season.label}</h1>
         </div>
         <Link href="/admin/seasons" className="btn btn-sm btn-ghost">← Seasons</Link>
@@ -154,7 +154,7 @@ export default function AdminSeasonDashboard({ params }: { params: Promise<{ id:
 
             {/* Leagues List */}
             <div className="space-y-4">
-              {season.leagues?.length === 0 && <div className="text-center p-8 opacity-50 border border-dashed border-base-content/10 rounded-xl">No leagues yet. Add one to get started.</div>}
+              {season.leagues?.length === 0 && <div className="text-center p-8 opacity-50 border border-dashed border-base-content/10 rounded-[3px]">No leagues yet. Add one to get started.</div>}
               
               {season.leagues?.map((league) => (
                 <div key={league.id} className="panel hover:border-primary/50 transition-colors cursor-pointer group"

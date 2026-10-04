@@ -36,7 +36,7 @@ export default async function AdminSeriesDetailPage(props: { params: Promise<{ i
     <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
       <div className="flex flex-col gap-4 border-b border-base-content/[0.07] pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="eyebrow mb-2 text-primary">Series</div>
+          <Link href="/admin/series" className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-[0.9375rem] font-medium text-season-ink/75 hover:text-season-ink"><span aria-hidden="true">←</span> Series</Link>
           <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">{s.name}</h1>
           <p className="text-sm text-base-content/60">
             {eventCount ?? 0} events{s.has_festivals ? ` · ${festivals?.length ?? 0} festivals` : " · single events"}
@@ -75,6 +75,15 @@ export default async function AdminSeriesDetailPage(props: { params: Promise<{ i
             <PatternField defaultValue={s.match_pattern ?? ""} />
 
             <ImageField name="logo_url" folder="logos" label="Logo" defaultValue={s.logo_url ?? ""} />
+            {s && "image_url" in s && (
+              <ImageField
+                name="image_url"
+                folder="photos"
+                label="Series photo (optional): series page, its festivals and results. Best size 2400 × 1350 px (16:9), subject centred."
+                defaultValue={(s as { image_url?: string | null }).image_url ?? ""}
+                wide
+              />
+            )}
 
             <label className="label cursor-pointer justify-start gap-3">
               <input type="checkbox" name="has_festivals" defaultChecked={s.has_festivals} className="checkbox checkbox-sm" />

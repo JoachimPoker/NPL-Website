@@ -1,34 +1,32 @@
-// Profile-shaped skeleton (the players list has its own in ../loading.tsx).
+// Profile-shaped skeleton (the players list has its own in ../loading.tsx): the dark hero with the
+// name, the row of title plaques, the tabs, then the two overview columns.
+const bone = "animate-pulse rounded-[3px] bg-white/[0.07]";
+
 export default function LoadingPlayerProfile() {
   return (
-    <div aria-busy="true" aria-label="Loading player">
-      <div className="border-b border-base-content/[0.07]">
-        <div className="mx-auto max-w-7xl px-4 pb-10 pt-10 sm:px-6 md:pt-14 lg:px-8">
-          <div className="skeleton h-3 w-16" />
-          <div className="mt-6 flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
-            <div className="flex items-end gap-5">
-              <div className="skeleton h-24 w-24 rounded-2xl md:h-32 md:w-32" />
-              <div className="space-y-3">
-                <div className="skeleton h-10 w-64 md:h-14 md:w-80" />
-                <div className="skeleton h-4 w-24" />
-              </div>
-            </div>
-            <div className="flex gap-10">
-              <div className="skeleton h-14 w-28" />
-              <div className="skeleton h-14 w-32" />
-            </div>
+    <div aria-busy="true" aria-label="Loading player" className="bg-season-night font-season">
+      <div className="flex min-h-[clamp(25rem,30vw,33rem)] items-end bg-[linear-gradient(180deg,#0b2629_0%,#06191c_100%)] px-4 pb-[clamp(2rem,3vw,3rem)] pt-[7.5rem] sm:px-[3.6vw]">
+        <div className="flex w-full items-center gap-6">
+          <div className="w-full space-y-3">
+            <div className={`${bone} h-14 w-full max-w-lg`} />
+            <div className={`${bone} h-5 w-56`} />
           </div>
         </div>
       </div>
-      <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-3 lg:px-8">
-        <div className="space-y-8 lg:col-span-2">
-          <div className="skeleton h-44 rounded-box" />
-          <div className="skeleton h-40 rounded-box" />
-          <div className="skeleton h-80 rounded-box" />
+      <div className="px-4 pb-24 sm:px-[3.6vw]">
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className={`${bone} h-24`} />
+          <div className={`${bone} hidden h-24 md:block`} />
+          <div className={`${bone} hidden h-24 md:block`} />
         </div>
-        <div className="space-y-6">
-          <div className="skeleton h-56 rounded-box" />
-          <div className="skeleton h-64 rounded-box" />
+        <div className="mt-12 flex gap-8 border-b border-white/[0.1] pb-4">
+          <div className={`${bone} h-5 w-20`} />
+          <div className={`${bone} h-5 w-20`} />
+          <div className={`${bone} h-5 w-28`} />
+        </div>
+        <div className="mt-10 grid gap-12 lg:grid-cols-[5fr_6fr]">
+          <div className={`${bone} h-64`} />
+          <div className={`${bone} h-80`} />
         </div>
       </div>
     </div>

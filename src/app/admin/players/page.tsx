@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
 import { redirect } from "next/navigation";
@@ -43,7 +44,6 @@ export default async function AdminPlayersPage(props: {
   return (
     <div className="mx-auto w-full max-w-7xl space-y-8 px-4 py-10 sm:px-6 lg:px-8">
       <div className="border-b border-base-content/[0.07] pb-6">
-        <div className="eyebrow mb-2 text-primary">Admin</div>
         <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">Players</h1>
         <p className="max-w-2xl text-sm text-base-content/60">
           Everyone in the reports, biggest winners first. Players without GDPR consent are shown by initials on the site.
@@ -91,7 +91,7 @@ export default async function AdminPlayersPage(props: {
                     <td className="hidden text-right font-mono text-sm sm:table-cell">{p.lifetime_cashes ?? 0}</td>
                     <td className="hidden text-right font-mono text-sm sm:table-cell">{gbp(p.lifetime_money_won)}</td>
                     <td className="text-center">
-                      {p.gdpr ? <span className="text-success">✓</span> : <span className="text-xs text-base-content/40">initials</span>}
+                      {p.gdpr ? <Check size={16} className="text-season-up" aria-label="Consent given" /> : <span className="text-[0.8125rem] text-season-muted">initials</span>}
                     </td>
                     <td className="pr-6 text-right">
                       <Link href={`/admin/players/${p.id}`} className="btn btn-ghost btn-xs">Edit</Link>

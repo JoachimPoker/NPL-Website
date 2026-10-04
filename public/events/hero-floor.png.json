@@ -1,0 +1,9 @@
+{
+  "prompt": "A cinematic film still, wide landscape, for the header of a poker league's tournaments page. A large tournament floor seen from a high balcony at night before play begins: many rows of empty poker tables with deep teal felt, chairs tucked in, each table lit by a warm amber pendant, receding into soft haze; a quiet sense of a big event about to start. No people, no faces, no text, no logos, no signage, no screens, no chip towers. Film grade: deep petrol-teal shadows (#06191C), warm amber highlights (#F2A33A), gentle bokeh, fine grain, premium sports-drama look. The left 45% of the frame is darker and calmer (a title sits there); detail sits centre-right; the top 12% is dark for a nav bar; the bottom third falls into near-black teal so it dissolves into a dark page.\n",
+  "createdAt": "2026-10-03T19:32:55.415Z",
+  "tool": "impeccable generate-image",
+  "model": "gpt-image-2.5-flare",
+  "refs": [
+    ".impeccable/mocks/decision/tn-mix.png"
+  ]
+}

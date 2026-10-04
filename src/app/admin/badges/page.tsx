@@ -51,7 +51,6 @@ export default async function AdminBadgesPage(props: { searchParams: Promise<{ r
     <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
       <div className="flex flex-col gap-4 border-b border-base-content/[0.07] pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="eyebrow mb-2 text-primary">Admin</div>
           <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">Badges</h1>
           <p className="max-w-2xl text-sm text-base-content/60">
             Automatic badges are recalculated after every import. Season honours are given once a season is no longer
@@ -79,7 +78,7 @@ export default async function AdminBadgesPage(props: { searchParams: Promise<{ r
             <div key={g.title} className="panel overflow-hidden">
               <h2 className="border-b border-base-content/[0.07] px-4 py-3 font-display text-lg font-semibold">{g.title}</h2>
               <table className="table table-sm w-full">
-                <thead className="bg-base-200/50 text-[10px] uppercase">
+                <thead className="bg-base-200/50 text-[0.8125rem]">
                   <tr><th>Name</th><th className="hidden md:table-cell">Rule</th><th className="text-right">Holders</th></tr>
                 </thead>
                 <tbody>
@@ -87,7 +86,7 @@ export default async function AdminBadgesPage(props: { searchParams: Promise<{ r
                     <tr key={d.id} className={`hover:bg-base-200/30 ${d.is_active ? "" : "opacity-40"}`}>
                       <td>
                         <Link href={`/admin/badges/${d.id}`} className="flex items-center gap-3 hover:text-primary">
-                          <BadgeMedal tier={d.tier} icon={d.icon} imageUrl={d.image_url} size="sm" />
+                          <BadgeMedal def={d} size="sm" />
                           <span>
                             <span className="block font-semibold">{d.name}</span>
                             <span className="block text-[11px] opacity-50">{d.category}{d.kind === "badge" ? "" : ` · ${TIER_LABEL[d.tier]}`}{d.is_active ? "" : " · inactive"}</span>

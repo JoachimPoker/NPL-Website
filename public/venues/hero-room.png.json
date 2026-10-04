@@ -1,0 +1,9 @@
+{
+  "prompt": "A cinematic film still, wide landscape, for the header of a poker league's venues page. A grand card room seen from its entrance at night: a long, low-ceilinged room of teal-felt poker tables under warm amber pendant lights, an art-deco archway framing the view, polished floor reflections; the room recedes into deep petrol-teal darkness. No people, no faces, no text, no signage, no logos, no screens, no chip towers. Film grade: deep petrol-teal shadows (#06191C), warm amber highlights (#F2A33A), fine grain, premium sports-drama look. Detail sits centre-right and in the middle band of the frame; the TOP 20% is plain dark ceiling with no lamps (a nav bar sits there); the left 45% is dark and calm; the bottom third falls into near-black teal so it dissolves into a dark page.\n",
+  "createdAt": "2026-10-03T20:44:33.866Z",
+  "tool": "impeccable generate-image",
+  "model": "gpt-image-2.5-flare",
+  "refs": [
+    "public/events/hero-floor.png"
+  ]
+}

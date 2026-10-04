@@ -1,9 +1,9 @@
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
-import { baseKey } from "@/lib/badges";
+import { baseKey, type BadgeDefinition } from "@/lib/badges";
 
 export const PAGE_SIZE = 50;
 export type LeagueSlug = "npl" | "hrl" | "lrl";
-export type AllTimeSort = "points" | "money" | "wins" | "cashes";
+export type AllTimeSort = "points" | "money" | "wins" | "cashes" | "final_tables" | "seasons";
 
 export type SeasonInfo = { id: number; name: string; year: number; is_active: boolean };
 export type LeagueInfo = {
@@ -18,7 +18,8 @@ export type LeagueInfo = {
   logo_url: string | null;
 };
 /** A title a player holds, shown as an icon next to their name. */
-export type TitleIcon = { key: string; name: string; icon: string | null; count: number };
+/** A title a player holds, with its definition so it can be drawn as its seal. */
+export type TitleIcon = { key: string; name: string; icon: string | null; count: number; def: BadgeDefinition };
 
 export type BoardRow = {
   player_id: number;
@@ -84,11 +85,11 @@ export async function getLeagues(db: Db, seasonId: number | null): Promise<Leagu
 }
 
 /** "Best 20 results count · +2 pts for each result after that". */
-export function formatRules(l: LeagueInfo | null, allTime = false) {
+export function formatRules(l: LeagueInfo | null, allTime = false, firstYear?: number) {
   if (!l) return null;
   if (allTime) {
     const scope = l.slug === "hrl" ? "High Roller events" : l.slug === "lrl" ? "events up to £300" : "every event";
-    return `Every result since 2024 counts · ${scope}`;
+    return `${firstYear ? `Every result since ${firstYear}` : "Every result"} counts · ${scope}`;
   }
   const parts = [l.scoring_method === "capped" && l.scoring_cap ? `Best ${l.scoring_cap} results count` : "Every result counts"];
   if (l.scoring_method === "capped" && l.extra_per_result) parts.push(`+${l.extra_per_result} pts for each result after that`);
@@ -159,11 +160,11 @@ export async function titlesFor(db: Db, playerIds: number[], seasonYear: number 
   if (!playerIds.length) return out;
   const { data: defs } = await db
     .from("badge_definitions")
-    .select("key, name, icon, display_order")
+    .select("*")
     .eq("kind", "badge")
     .eq("is_active", true);
   if (!defs?.length) return out;
-  const defByKey = new Map(defs.map((d) => [d.key, d]));
+  const defByKey = new Map((defs as BadgeDefinition[]).map((d) => [d.key, d]));
 
   let query = db
     .from("player_badges")
@@ -185,15 +186,18 @@ export async function titlesFor(db: Db, playerIds: number[], seasonYear: number 
     out.set(
       pid,
       [...m.entries()]
-        .map(([key, count]) => ({ key, count, name: defByKey.get(key)!.name, icon: defByKey.get(key)!.icon }))
+        .map(([key, count]) => ({ key, count, name: defByKey.get(key)!.name, icon: defByKey.get(key)!.icon, def: defByKey.get(key)! }))
         .sort((a, b) => (defByKey.get(a.key)!.display_order ?? 0) - (defByKey.get(b.key)!.display_order ?? 0))
     );
   }
   return out;
 }
 
-/** Latest two import snapshots for a league this season: positions and points per player. */
-async function snapshots(db: Db, seasonId: number, league: LeagueSlug) {
+/**
+ * Latest two import snapshots for a league this season. Each snapshot is dated by the last
+ * tournament in that weekly report, so `latest` reads as "results up to <date>".
+ */
+export async function snapshots(db: Db, seasonId: number, league: LeagueSlug) {
   const { data: dates } = await db
     .from("leaderboard_positions")
     .select("snapshot_date")
@@ -266,13 +270,13 @@ export async function thisWeek(db: Db, seasonId: number, league: LeagueSlug, nam
   }));
   const items: WeekItem[] = [];
   const climber = moves.filter((m) => m.now.position <= 100 && m.climb > 0).sort((a, b) => b.climb - a.climb)[0];
-  if (climber) items.push({ label: "Biggest climber", player_id: climber.pid, name: "", detail: `Up ${climber.climb} to #${climber.now.position}` });
+  if (climber) items.push({ label: "Biggest climber", player_id: climber.pid, name: "", detail: `Up ${climber.climb} ${climber.climb === 1 ? "place" : "places"} to #${climber.now.position}` });
   const newTop10 = moves
     .filter((m) => m.now.position <= 10 && (!m.prev || m.prev.position > 10))
     .sort((a, b) => a.now.position - b.now.position)[0];
   if (newTop10) items.push({ label: "New in the top 10", player_id: newTop10.pid, name: "", detail: `Now #${newTop10.now.position}` });
   const scorer = moves.filter((m) => m.gained > 0).sort((a, b) => b.gained - a.gained)[0];
-  if (scorer) items.push({ label: "Most points this week", player_id: scorer.pid, name: "", detail: `+${scorer.gained.toFixed(2)} pts` });
+  if (scorer) items.push({ label: "Most points", player_id: scorer.pid, name: "", detail: `+${scorer.gained.toFixed(2)} pts` });
 
   // Names come from the table where possible; otherwise look them up (masked like everywhere else).
   const missing = items.map((i) => i.player_id).filter((id) => !names.has(id));

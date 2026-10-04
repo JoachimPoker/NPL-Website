@@ -13,7 +13,6 @@ export default async function AdminLeaguesPage() {
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
       <div className="border-b border-base-content/[0.07] pb-6">
-        <div className="eyebrow mb-2 text-primary">Admin</div>
         <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">League logos</h1>
         <p className="max-w-2xl text-sm text-base-content/60">
           One logo per league, used for every season: on the leaderboards, the home page and the Hall of Fame.

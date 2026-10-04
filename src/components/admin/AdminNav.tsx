@@ -15,6 +15,9 @@ const LINKS = [
   { label: "Schedule", href: "/admin/schedule" },
   { label: "Badges", href: "/admin/badges" },
   { label: "News", href: "/admin/news" },
+  { label: "Photos", href: "/admin/images" },
+  { label: "Messages", href: "/admin/messages" },
+  { label: "Users", href: "/admin/users" },
 ];
 
 /** Admin section links, styled like the site's main navigation. */
@@ -31,8 +34,8 @@ export default function AdminNav() {
             key={link.href}
             href={link.href}
             aria-current={active ? "page" : undefined}
-            className={`relative shrink-0 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${
-              active ? "bg-base-content/[0.06] text-base-content" : "text-base-content/55 hover:text-base-content"
+            className={`relative flex h-12 shrink-0 items-center px-2.5 text-[0.9375rem] font-medium transition-colors ${
+              active ? "text-season-ink after:absolute after:inset-x-2.5 after:bottom-0 after:h-[2px] after:bg-season-amber" : "text-season-ink/65 hover:text-season-ink"
             }`}
           >
             {link.label}

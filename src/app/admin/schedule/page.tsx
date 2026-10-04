@@ -23,7 +23,6 @@ export default async function AdminSchedulePage(props: { searchParams: Promise<{
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
       <div className="border-b border-base-content/[0.07] pb-6">
-        <div className="eyebrow mb-2 text-primary">Admin</div>
         <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">Schedule</h1>
         <p className="max-w-2xl text-sm text-base-content/60">
           Upcoming festivals and events for the &ldquo;Coming up&rdquo; sections on the home page, Tournaments,

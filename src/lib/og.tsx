@@ -6,22 +6,22 @@ import path from "node:path";
 export const OG_SIZE = { width: 1200, height: 630 };
 export const OG_ALT = SITE_NAME;
 
-// Site palette (globals.css "npl" theme) in hex, since the image renderer has no CSS variables.
+// The Season palette (globals.css season-* tokens) in hex, since the image renderer has no CSS variables.
 const C = {
-  bg: "#120f24",
-  glow: "#1f1a5a", // brand navy
-  panel: "#1c173d", // Oxford blue
-  text: "#f4efe4",
-  muted: "#9a96b4",
-  gold: "#d59516",
-  line: "#2c2658",
+  bg: "#06191c",
+  glow: "#14434a",
+  panel: "#0f3337",
+  text: "#f3ede4",
+  muted: "#93adac",
+  gold: "#f2a33a", // the amber accent
+  line: "rgba(255,255,255,0.10)",
 };
 
 // NPL Events logo as a data URI (the image renderer can't load site-relative URLs).
 let logoCache: Promise<string | null> | null = null;
 function logoDataUri() {
-  logoCache ??= readFile(path.join(process.cwd(), "public", "brand", "npl-events.png"))
-    .then((b) => `data:image/png;base64,${b.toString("base64")}`)
+  logoCache ??= readFile(path.join(process.cwd(), "public", "brand", "NPL-Events-White.svg"))
+    .then((b) => `data:image/svg+xml;base64,${b.toString("base64")}`)
     .catch(() => null);
   return logoCache;
 }
@@ -31,7 +31,7 @@ let fontCache: Promise<ArrayBuffer | null> | null = null;
 function headingFont() {
   fontCache ??= (async () => {
     try {
-      const css = await (await fetch("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700")).text();
+      const css = await (await fetch("https://fonts.googleapis.com/css2?family=Figtree:wght@700")).text();
       const src = css.match(/src: url\((.+?)\) format\('(opentype|truetype)'\)/)?.[1];
       return src ? await (await fetch(src)).arrayBuffer() : null;
     } catch {
@@ -117,7 +117,7 @@ export async function ogCard(opts: {
                   alignItems: "center",
                   padding: "8px 22px",
                   borderRadius: 12,
-                  background: i === 0 ? "rgba(226,174,91,0.14)" : C.panel,
+                  background: i === 0 ? "rgba(242,163,58,0.14)" : C.panel,
                   fontSize: 26,
                 }}
               >

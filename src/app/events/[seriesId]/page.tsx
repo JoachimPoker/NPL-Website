@@ -2,14 +2,14 @@ import Link from "next/link";
 import { pageMeta } from "@/lib/site";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { Trophy } from "lucide-react";
-import PageHeader from "@/components/PageHeader";
-import UpcomingList from "@/components/tournaments/UpcomingList";
+import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { getUpcoming } from "@/lib/venues";
-import { Initial } from "@/components/HomeLeaderboard";
+import { decodeEntities } from "@/lib/nameMask";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
-import { SeriesMark, FestivalCard, ResultCard } from "@/components/tournaments/TournamentCards";
-import { type EventSummary, type FestivalSummary, type SeriesRow, gbpShort, day, eventHref } from "@/lib/tournaments";
+import { type EventSummary, type FestivalSummary, type SeriesRow, day, eventHref } from "@/lib/tournaments";
+import { ComingUp, TitleBand } from "@/components/tournaments/ComingUp";
+import { getSiteImages } from "@/lib/siteImages";
+import { EventRows, FestivalStrip, eventTitle } from "@/components/tournaments/SeasonCalendar";
 
 export const runtime = "nodejs";
 export const revalidate = 300;
@@ -24,10 +24,13 @@ type LbRow = {
   final_tables: number;
 };
 
+const h2 = "text-[clamp(1.5rem,1.9vw,2rem)] font-semibold leading-tight";
+const PAGE_SIZE = 25;
+
 /** Series pages live at /events/<slug>; old numeric links (/events/12) still work. */
 async function findSeries(param: string) {
   const supabase = await createSupabaseServerClient();
-  const cols = "id, name, slug, description, logo_url, has_festivals, sort_order";
+  const cols = "*";
   const bySlug = await supabase.from("series").select(cols).eq("slug", param).maybeSingle();
   if (bySlug.data) return bySlug.data as SeriesRow;
   if (/^\d+$/.test(param)) {
@@ -62,183 +65,203 @@ export default async function SeriesPage(props: {
   params: Promise<{ seriesId: string }>;
   searchParams: Promise<{ scope?: string; page?: string }>;
 }) {
+  const img = await getSiteImages();
   const params = await props.params;
   const sp = await props.searchParams;
   const series = await findSeries(params.seriesId);
   if (!series) notFound();
 
   const scope = sp.scope === "all_time" ? "all_time" : "season";
-  const currentPage = Math.max(1, Number(sp.page || 1));
-  const pageSize = 50;
   const supabase = await createSupabaseServerClient();
-
-  const { data: activeSeason } = await supabase.from("seasons").select("id, name").eq("is_active", true).maybeSingle();
+  const { data: activeSeason } = await supabase.from("seasons").select("id, name, year").eq("is_active", true).maybeSingle();
 
   const [{ data: lbRows, error: lbError }, { data: eventData }, { data: festivalData }, upcoming] = await Promise.all([
     allSeriesRows(supabase, series.id, scope),
     supabase.from("event_summary").select("*").eq("series_id", series.id).order("start_date", { ascending: false }).limit(400),
     supabase.from("festival_summary").select("*").eq("series_id", series.id).order("start_date", { ascending: false }).limit(12),
-    getUpcoming({ seriesId: series.id }),
+    getUpcoming({ seriesId: series.id, limit: 4 }),
   ]);
   if (lbError) console.error("Series leaderboard error:", lbError);
 
-  const allRows = (lbRows || []) as LbRow[];
+  const allRows = ((lbRows || []) as LbRow[]).map((r) => ({ ...r, display_name: decodeEntities(r.display_name) }));
   const events = (eventData || []) as EventSummary[];
   const festivals = (festivalData || []) as FestivalSummary[];
   const seasonEvents = events.filter((e) => e.season_id === activeSeason?.id);
+  const seasonFestivals = festivals.filter((f) => f.season_id === activeSeason?.id);
+  const seriesById = new Map([[series.id, series]]);
 
-  const mostWins = [...allRows].sort((a, b) => b.wins - a.wins)[0];
-  const mostFts = [...allRows].sort((a, b) => b.final_tables - a.final_tables)[0];
-  const mostEvents = [...allRows].sort((a, b) => b.events_played - a.events_played)[0];
+  const pages = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE));
+  const page = Math.min(pages, Math.max(1, Number(sp.page) || 1));
+  const rows = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const href = (patch: { scope?: string; page?: number }) => {
+    const q = new URLSearchParams();
+    const sc = patch.scope ?? scope;
+    if (sc === "all_time") q.set("scope", "all_time");
+    if (patch.page && patch.page > 1) q.set("page", String(patch.page));
+    const s = q.toString();
+    return s ? `?${s}` : "?";
+  };
 
-  const totalPlayers = allRows.length;
-  const totalPages = Math.ceil(totalPlayers / pageSize);
-  const paginatedRows = allRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const records = [
+    { label: "Most wins", row: [...allRows].sort((a, b) => b.wins - a.wins)[0], value: (r: LbRow) => r.wins },
+    { label: "Most final tables", row: [...allRows].sort((a, b) => b.final_tables - a.final_tables)[0], value: (r: LbRow) => r.final_tables },
+    { label: "Most events", row: [...allRows].sort((a, b) => b.events_played - a.events_played)[0], value: (r: LbRow) => r.events_played },
+  ].filter((r) => r.row && r.value(r.row) > 0);
 
   return (
-    <>
-      <PageHeader
-        eyebrow={<Link href="/events" className="hover:text-primary">Tournaments</Link>}
-        title={
-          series.logo_url ? (
+    <div className="bg-season-night font-season text-season-ink">
+      <TitleBand image={series.image_url || img.room_3} position="object-[60%_55%]">
+        <Link href="/events" className="mb-5 inline-flex min-h-11 items-center gap-1.5 text-[0.9375rem] font-medium text-season-ink/75 hover:text-season-ink">
+          <ArrowLeft size={16} strokeWidth={2.25} aria-hidden="true" /> Tournaments
+        </Link>
+        <h1 className="m-0">
+          {series.logo_url ? (
             // The logo is the title; its alt text carries the name.
-            <SeriesMark series={series} size="lg" />
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={series.logo_url} alt={series.name} className="block h-[clamp(3.5rem,6vw,5.5rem)] w-auto max-w-full object-contain object-left" />
           ) : (
-            <span className="flex items-center gap-4">
-              <SeriesMark series={series} size="lg" />
-              {series.name}
-            </span>
-          )
-        }
-        description={series.description || undefined}
-        actions={
-          <div role="tablist" aria-label="Standings period" className="inline-flex rounded-lg bg-base-100 p-1 ring-1 ring-inset ring-base-content/[0.07]">
-            {[
-              { key: "season", label: "This season" },
-              { key: "all_time", label: "All-time" },
-            ].map((o) => (
-              <Link
-                key={o.key}
-                href={`?scope=${o.key}`}
-                role="tab"
-                aria-selected={scope === o.key}
-                className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-                  scope === o.key ? "bg-primary text-primary-content" : "text-base-content/60 hover:text-base-content"
-                }`}
-              >
-                {o.label}
-              </Link>
-            ))}
-          </div>
-        }
-      >
-        <dl className="grid max-w-3xl grid-cols-2 gap-6 sm:grid-cols-4">
-          <Headline label="Events this season" value={String(seasonEvents.length)} />
-          <Headline label="Cashes" value={seasonEvents.reduce((n, e) => n + e.entries, 0).toLocaleString("en-GB")} />
-          <Headline label="Paid out" value={gbpShort(seasonEvents.reduce((n, e) => n + Number(e.paid_out || 0), 0))} />
-          <Headline label="Last event" value={events[0] ? day(events[0].start_date, { day: "numeric", month: "short", year: "numeric" }) : "–"} />
-        </dl>
-      </PageHeader>
+            <span className="block text-[clamp(2.5rem,4.4vw,4.375rem)] font-bold leading-[1.02] tracking-[-0.012em]">{series.name}</span>
+          )}
+        </h1>
+        {series.description && <p className="mt-4 max-w-[38em] text-[clamp(1.0625rem,1.25vw,1.25rem)] leading-relaxed text-season-ink/85">{series.description}</p>}
+        <p className="mt-3 text-[1.0625rem] font-medium tabular-nums text-season-ink/80">
+          {activeSeason && (
+            <>
+              {activeSeason.year}: {seasonEvents.length} {seasonEvents.length === 1 ? "event" : "events"}
+              {seasonFestivals.length > 0 && ` · ${seasonFestivals.length} ${seasonFestivals.length === 1 ? "festival" : "festivals"}`}
+            </>
+          )}
+          {events[0] && <span className="text-season-ink/60">{activeSeason ? " · " : ""}last event {day(events[0].start_date, { day: "numeric", month: "short", year: "numeric" })}</span>}
+        </p>
+      </TitleBand>
 
-      <div className="mx-auto w-full max-w-7xl space-y-14 px-4 py-10 sm:px-6 lg:px-8">
-        <UpcomingList items={upcoming} title={`Next ${series.name} dates`} />
+      <div className="space-y-[clamp(2.5rem,4vw,4rem)] px-4 pb-[clamp(2.5rem,4vw,4rem)] sm:px-[3.6vw]">
+        <ComingUp items={upcoming} seriesById={seriesById} title={`Next ${series.name} dates`} />
 
-        {/* Record holders */}
-        {allRows.length > 0 && (
-          <section className="grid gap-4 md:grid-cols-3" aria-label="Record holders">
-            <StatCard label="Most wins" value={mostWins?.wins || 0} player={mostWins?.display_name} playerId={mostWins?.player_id} />
-            <StatCard label="Most final tables" value={mostFts?.final_tables || 0} player={mostFts?.display_name} playerId={mostFts?.player_id} />
-            <StatCard label="Most events" value={mostEvents?.events_played || 0} player={mostEvents?.display_name} playerId={mostEvents?.player_id} />
-          </section>
-        )}
-
-        <div className="grid gap-8 lg:grid-cols-12">
+        <div className="grid gap-x-[clamp(2rem,4vw,4.5rem)] gap-y-14 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           {/* Standings */}
-          <section className="panel overflow-hidden lg:col-span-8" aria-labelledby="series-standings">
-            <div className="flex items-center justify-between border-b border-base-content/[0.07] px-6 py-5">
-              <h2 id="series-standings" className="font-display text-xl font-semibold tracking-tight">
-                {scope === "season" ? "This season" : "All-time"} standings
-              </h2>
-              <span className="text-sm text-base-content/45">{totalPlayers.toLocaleString("en-GB")} players</span>
+          <section id="standings" aria-labelledby="series-standings" className="min-w-0 scroll-mt-8">
+            <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+              <div>
+                <h2 id="series-standings" className={h2}>Standings</h2>
+                <p className="mt-1 text-[0.9375rem] tabular-nums text-season-muted">
+                  {allRows.length.toLocaleString("en-GB")} {allRows.length === 1 ? "player" : "players"} · {scope === "season" ? `the ${activeSeason?.year ?? "current"} season` : "every season"}
+                </p>
+              </div>
+              <nav aria-label="Standings period" className="inline-flex rounded-[3px] border border-white/[0.12]">
+                {[
+                  { key: "season", label: "This season" },
+                  { key: "all_time", label: "All-time" },
+                ].map((o) => (
+                  <Link
+                    key={o.key}
+                    href={`${href({ scope: o.key, page: 1 })}#standings`}
+                    scroll={false}
+                    aria-current={scope === o.key ? "page" : undefined}
+                    className={`-m-px flex h-11 items-center rounded-[3px] px-[1.1rem] text-[0.9375rem] font-medium transition-colors ${
+                      scope === o.key ? "relative z-10 bg-season-amber/[0.12] font-semibold shadow-[inset_0_0_0_1px_var(--color-season-amber)]" : "text-season-ink/75 hover:text-season-ink"
+                    }`}
+                  >
+                    {o.label}
+                  </Link>
+                ))}
+              </nav>
             </div>
 
-            <div className="overflow-x-auto">
-              {!paginatedRows.length ? (
-                <div className="px-6 py-16 text-center">
-                  <div className="font-display text-lg">No results yet</div>
-                  <p className="mt-1 text-sm text-base-content/50">
-                    {scope === "season" ? "Nothing has been recorded for this season." : "Nothing has been recorded for this series."}
-                  </p>
-                </div>
-              ) : (
-                <table className="table w-full">
+            {!rows.length ? (
+              <p className="mt-6 border-t border-white/[0.12] py-14 text-center text-season-ink/80">
+                {scope === "season" ? "Nothing has been recorded for this series this season." : "Nothing has been recorded for this series yet."}
+              </p>
+            ) : (
+              <div className="mt-5 overflow-x-auto">
+                <table className="w-full border-collapse text-left tabular-nums">
+                  <caption className="sr-only">{series.name} standings, {scope === "season" ? "this season" : "all-time"}, page {page} of {pages}</caption>
                   <thead>
-                    <tr>
-                      <th className="w-16 pl-6 text-center">#</th>
-                      <th>Player</th>
-                      <th className="text-right">Events</th>
-                      <th className="hidden text-right sm:table-cell">Wins</th>
-                      <th className="hidden text-right sm:table-cell">FTs</th>
-                      <th className="pr-6 text-right">Points</th>
+                    <tr className="border-b border-white/[0.12] text-[0.875rem] text-season-muted">
+                      <th scope="col" className="w-16 pb-3 pr-3 font-medium">Rank</th>
+                      <th scope="col" className="w-full pb-3 font-medium">Player</th>
+                      <th scope="col" className="hidden pb-3 pl-5 text-right font-medium sm:table-cell">Events</th>
+                      <th scope="col" className="hidden pb-3 pl-5 text-right font-medium sm:table-cell">Wins</th>
+                      <th scope="col" className="hidden whitespace-nowrap pb-3 pl-5 text-right font-medium md:table-cell">Final tables</th>
+                      <th scope="col" className="pb-3 pl-5 text-right font-medium">Points</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedRows.map((r) => {
+                    {rows.map((r) => {
                       const podium = r.position <= 3;
                       return (
-                        <tr key={r.player_id} className={`transition-colors hover:bg-base-content/[0.03] ${podium ? "bg-primary/[0.035]" : ""}`}>
-                          <td className={`pl-6 text-center font-mono text-base font-semibold ${podium ? "text-primary" : "text-base-content/45"}`}>
-                            {r.position}
-                          </td>
-                          <td>
-                            <Link className="group flex items-center gap-3 font-medium" href={`/players/${r.player_id}`}>
-                              <Initial name={r.display_name} />
-                              <span className="transition-colors group-hover:text-primary">{r.display_name}</span>
+                        <tr key={r.player_id} className="border-b border-white/[0.07] transition-colors hover:bg-white/[0.025]">
+                          <td className={`pr-3 text-[1.0625rem] font-semibold ${podium ? "text-season-amber" : ""}`}>{r.position}</td>
+                          <td className="max-w-0">
+                            <Link href={`/players/${r.player_id}`} className={`block min-h-14 truncate py-4 text-[1.0625rem] decoration-season-ink/40 underline-offset-4 hover:underline ${podium ? "font-semibold" : ""}`}>
+                              {r.display_name}
                             </Link>
                           </td>
-                          <td className="text-right font-mono text-sm text-base-content/60">{r.events_played}</td>
-                          <td className="hidden text-right font-mono text-sm text-base-content/60 sm:table-cell">{r.wins > 0 ? r.wins : "–"}</td>
-                          <td className="hidden text-right font-mono text-sm text-base-content/60 sm:table-cell">{r.final_tables > 0 ? r.final_tables : "–"}</td>
-                          <td className="pr-6 text-right font-mono text-base font-semibold">{Number(r.total_points).toFixed(2)}</td>
+                          <td className="hidden pl-5 text-right text-season-ink/80 sm:table-cell">{r.events_played}</td>
+                          <td className="hidden pl-5 text-right sm:table-cell">{r.wins || <span className="text-season-muted">–</span>}</td>
+                          <td className="hidden pl-5 text-right md:table-cell">{r.final_tables || <span className="text-season-muted">–</span>}</td>
+                          <td className={`whitespace-nowrap pl-5 text-right text-[1.0625rem] font-semibold ${podium ? "text-season-amber" : ""}`}>{Number(r.total_points).toFixed(2)}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-              )}
-            </div>
-
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between border-t border-base-content/[0.07] px-6 py-4">
-                <div className="text-sm text-base-content/50">Page {currentPage} of {totalPages}</div>
-                <div className="join">
-                  <Link href={`?scope=${scope}&page=${currentPage - 1}`} aria-disabled={currentPage <= 1} className={`join-item btn btn-sm ${currentPage <= 1 ? "btn-disabled" : "btn-ghost"}`}>Previous</Link>
-                  <Link href={`?scope=${scope}&page=${currentPage + 1}`} aria-disabled={currentPage >= totalPages} className={`join-item btn btn-sm ${currentPage >= totalPages ? "btn-disabled" : "btn-ghost"}`}>Next</Link>
-                </div>
               </div>
+            )}
+
+            {pages > 1 && (
+              <nav aria-label="Pages" className="mt-4 flex items-center justify-between gap-4">
+                <span className="text-[0.875rem] tabular-nums text-season-muted">
+                  {((page - 1) * PAGE_SIZE + 1).toLocaleString("en-GB")}–{Math.min(page * PAGE_SIZE, allRows.length).toLocaleString("en-GB")} of {allRows.length.toLocaleString("en-GB")}
+                </span>
+                <div className="flex items-center gap-1">
+                  <PagerArrow dir="prev" href={page > 1 ? `${href({ page: page - 1 })}#standings` : null} />
+                  <span className="px-2 text-[0.9375rem] tabular-nums text-season-ink/80">Page {page} of {pages}</span>
+                  <PagerArrow dir="next" href={page < pages ? `${href({ page: page + 1 })}#standings` : null} />
+                </div>
+              </nav>
             )}
           </section>
 
-          {/* Latest champions */}
-          <aside className="space-y-4 lg:col-span-4">
-            <h2 className="font-display text-lg font-semibold">Latest champions</h2>
-            {events.length > 0 ? (
-              <ol className="panel divide-y divide-base-content/[0.06]">
-                {events.slice(0, 6).map((e) => (
-                  <li key={e.id}>
-                    <Link href={eventHref(e.id)} className="flex items-start gap-3 p-4 transition-colors hover:bg-base-content/[0.03]">
-                      <Trophy size={16} className="mt-1 shrink-0 text-primary" aria-hidden="true" />
+          {/* Champions and records */}
+          <aside className="min-w-0 space-y-12" aria-label={`${series.name} champions and records`}>
+            <section aria-labelledby="champions">
+              <h2 id="champions" className="text-[clamp(1.3125rem,1.6vw,1.6875rem)] font-semibold leading-tight">Latest champions</h2>
+              {events.length > 0 ? (
+                <ol className="mt-5 border-t border-white/[0.12]">
+                  {events.slice(0, 6).map((e) => (
+                    <li key={e.id} className="border-b border-white/[0.07]">
+                      <Link href={eventHref(e.id)} className="group block py-3.5">
+                        <span className="block truncate text-[1.0625rem] font-semibold text-season-amber">{e.winner_name ?? "–"}</span>
+                        <span className="block truncate text-[0.9375rem] decoration-season-ink/40 underline-offset-4 group-hover:underline" title={e.name ?? ""}>{eventTitle(e.name)}</span>
+                        <span className="block text-[0.875rem] tabular-nums text-season-muted">{day(e.start_date, { day: "numeric", month: "short", year: "numeric" })}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="mt-4 text-season-ink/80">No winners recorded yet.</p>
+              )}
+            </section>
+
+            {records.length > 0 && (
+              <section aria-labelledby="records">
+                <h2 id="records" className="text-[clamp(1.3125rem,1.6vw,1.6875rem)] font-semibold leading-tight">Record holders</h2>
+                <p className="mt-1 text-[0.9375rem] text-season-muted">{scope === "season" ? "This season" : "All-time"}</p>
+                <dl className="mt-4 border-t border-white/[0.12]">
+                  {records.map(({ label, row, value }) => (
+                    <div key={label} className="flex items-center justify-between gap-4 border-b border-white/[0.07] py-3.5">
                       <div className="min-w-0">
-                        <div className="truncate font-display font-medium">{e.winner_name ?? "–"}</div>
-                        <div className="truncate text-sm text-base-content/50" title={e.name ?? ""}>{e.name}</div>
-                        <div className="mt-0.5 font-mono text-xs text-base-content/35">{day(e.start_date, { day: "numeric", month: "short", year: "numeric" })}</div>
+                        <dt className="text-[0.9375rem] text-season-muted">{label}</dt>
+                        <dd className="truncate text-[1.0625rem] font-semibold">
+                          <Link href={`/players/${row!.player_id}`} className="decoration-season-ink/40 underline-offset-4 hover:underline">{row!.display_name}</Link>
+                        </dd>
                       </div>
-                    </Link>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="panel p-5 text-sm text-base-content/45">No winners recorded yet.</p>
+                      <dd className="shrink-0 text-[1.75rem] font-bold tabular-nums text-season-amber">{value(row!)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
             )}
           </aside>
         </div>
@@ -246,50 +269,36 @@ export default async function SeriesPage(props: {
         {/* Festivals, or recent events for single-event series */}
         {series.has_festivals && festivals.length > 0 ? (
           <section aria-labelledby="series-festivals">
-            <h2 id="series-festivals" className="mb-5 font-display text-2xl font-semibold tracking-tight">Festivals</h2>
-            <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {festivals.map((f) => (
-                <li key={f.id}><FestivalCard festival={f} series={series} /></li>
-              ))}
-            </ul>
+            <h2 id="series-festivals" className={h2}>Festivals</h2>
+            <div className="mt-5 space-y-4">
+              {festivals.map((f, i) => <FestivalStrip key={f.id} festival={f} series={series} still={i} badge={false} />)}
+            </div>
           </section>
         ) : events.length > 0 ? (
           <section aria-labelledby="series-events">
-            <h2 id="series-events" className="mb-5 font-display text-2xl font-semibold tracking-tight">Recent events</h2>
-            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {events.slice(0, 9).map((e) => (
-                <li key={e.id}><ResultCard event={e} series={series} /></li>
-              ))}
-            </ul>
+            <h2 id="series-events" className={h2}>Recent events</h2>
+            <EventRows events={events.slice(0, 15)} badge={false} year className="mt-5 border-t border-white/[0.12]" />
           </section>
         ) : null}
       </div>
-    </>
-  );
-}
-
-function Headline({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="eyebrow">{label}</dt>
-      <dd className="mt-1 font-display text-2xl font-semibold tracking-tight">{value}</dd>
     </div>
   );
 }
 
-function StatCard({ label, value, player, playerId }: { label: string; value: number; player?: string; playerId?: number }) {
-  if (!player || value === 0) return null;
+/** Previous / next page. At either end it is a plain disabled control, not a focusable dead link. */
+function PagerArrow({ dir, href }: { dir: "prev" | "next"; href: string | null }) {
+  const label = dir === "prev" ? "Previous page" : "Next page";
+  const Icon = dir === "prev" ? ChevronLeft : ChevronRight;
+  const cls = "inline-flex size-11 items-center justify-center rounded-[3px] text-season-ink transition-colors sm:size-10";
+  if (!href)
+    return (
+      <span className={`${cls} pointer-events-none opacity-30`} aria-disabled="true" aria-label={label} role="link">
+        <Icon size={18} aria-hidden="true" />
+      </span>
+    );
   return (
-    <div className="panel flex items-end justify-between gap-4 p-5">
-      <div className="min-w-0">
-        <div className="eyebrow">{label}</div>
-        {playerId ? (
-          <Link href={`/players/${playerId}`} className="mt-2 block truncate font-display text-lg font-medium hover:text-primary">{player}</Link>
-        ) : (
-          <div className="mt-2 truncate font-display text-lg font-medium">{player}</div>
-        )}
-      </div>
-      <div className="font-mono text-3xl font-semibold text-primary">{value}</div>
-    </div>
+    <Link href={href} scroll={false} className={`${cls} hover:bg-white/[0.06]`} aria-label={label}>
+      <Icon size={18} aria-hidden="true" />
+    </Link>
   );
 }

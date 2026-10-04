@@ -22,7 +22,7 @@ export default async function SeasonPrizesPage(props: { params: Promise<{ id: st
     <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
       <div className="flex flex-col gap-4 border-b border-base-content/[0.07] pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="eyebrow mb-2 text-primary">{season.name}</div>
+          <Link href={`/admin/seasons/${season.id}`} className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-[0.9375rem] font-medium text-season-ink/75 hover:text-season-ink"><span aria-hidden="true">←</span> {season.name}</Link>
           <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">Prizes</h1>
           <p className="text-sm text-base-content/60">
             Shown next to each position on the Leaderboards page, with a line under the last paid place.
@@ -39,7 +39,7 @@ export default async function SeasonPrizesPage(props: { params: Promise<{ id: st
           <section key={l.slug} className="panel overflow-hidden">
             <h2 className="font-display font-semibold border-b border-base-content/[0.07] px-5 py-3">{l.label}</h2>
             <table className="table table-sm w-full">
-              <thead className="bg-base-200/50 text-[10px] uppercase">
+              <thead className="bg-base-200/50 text-[0.8125rem]">
                 <tr><th>Position</th><th>Prize</th><th className="text-right">Amount</th><th /></tr>
               </thead>
               <tbody>

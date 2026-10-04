@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import Link from "next/link";
 import { createSupabaseClient } from "@/lib/supabaseClient";
-import { History, UploadCloud, FileSpreadsheet, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { History, UploadCloud, FileSpreadsheet, AlertTriangle, CheckCircle2, X } from "lucide-react";
 
 // --- TYPES ---
 type Season = { id: number; name: string; year: number; is_active: boolean | null };
@@ -169,7 +168,6 @@ export default function AdminImportPage() {
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-base-content/[0.07] pb-6">
         <div>
-          <div className="eyebrow mb-2 text-primary">Admin</div>
           <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">Import results</h1>
         </div>
       </div>
@@ -193,7 +191,7 @@ export default function AdminImportPage() {
                   {/* Drop Zone */}
                   <div
                     className={`
-                      relative w-full h-40 rounded-xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center gap-2
+                      relative w-full h-40 rounded-[3px] border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center gap-2
                       ${dragActive ? "border-primary bg-primary/5 scale-[1.02]" : "border-base-content/10 bg-base-200/20 hover:border-primary/50 hover:bg-base-200/40"}
                       ${file ? "border-success/50 bg-success/5" : ""}
                     `}
@@ -218,7 +216,7 @@ export default function AdminImportPage() {
                   {/* Season */}
                   <div className="form-control">
                     <label className="label" htmlFor="season">
-                      <span className="label-text font-bold uppercase text-xs tracking-wider opacity-70">Season</span>
+                      <span className="label-text text-[0.875rem] font-medium text-season-ink/85">Season</span>
                     </label>
                     <select
                       id="season"
@@ -276,7 +274,7 @@ export default function AdminImportPage() {
           </h3>
           <div className="panel overflow-hidden">
             <table className="table table-sm w-full">
-              <thead className="bg-base-200/50 text-[10px] uppercase text-base-content/50">
+              <thead className="bg-base-200/50 text-[0.8125rem] text-base-content/50">
                 <tr>
                   <th className="py-3 pl-4">Imported</th>
                   <th className="py-3">File</th>
@@ -356,7 +354,7 @@ function PreviewCard({ preview, busy, onApply, onCancel }: {
         {nothingChanges && <p className="text-sm text-base-content/60">This report matches what&apos;s already on the site.</p>}
 
         {removed > 0 && (
-          <details className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs" open={removed <= 10}>
+          <details className="rounded-[3px] border border-warning/30 bg-warning/5 p-3 text-xs" open={removed <= 10}>
             <summary className="cursor-pointer font-bold text-warning">
               {removed} result{removed === 1 ? "" : "s"} no longer in the report will be removed
             </summary>
@@ -369,7 +367,7 @@ function PreviewCard({ preview, busy, onApply, onCancel }: {
         )}
 
         {preview.warnings.length > 0 && (
-          <details className="rounded-lg border border-base-content/10 p-3 text-xs">
+          <details className="rounded-[3px] border border-base-content/10 p-3 text-xs">
             <summary className="cursor-pointer font-bold">{preview.warnings.length} note{preview.warnings.length === 1 ? "" : "s"} about the file</summary>
             <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto opacity-80">
               {preview.warnings.map((w, i) => <li key={i}>{w}</li>)}
@@ -464,12 +462,12 @@ function NewEventsModal({ events: initial, onClose }: { events: NewEvent[]; onCl
               {events.length} new tournament{events.length === 1 ? "" : "s"}. Assign a series, and check High Roller (set from the name).
             </p>
           </div>
-          <button onClick={onClose} className="btn btn-ghost btn-sm btn-circle" aria-label="Close">✕</button>
+          <button onClick={onClose} className="btn btn-ghost btn-sm btn-circle" aria-label="Close"><X size={16} aria-hidden="true" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto">
           <table className="table w-full">
-            <thead className="bg-base-200/50 sticky top-0 z-10 text-xs font-bold uppercase">
+            <thead className="bg-base-200/50 sticky top-0 z-10 text-[0.8125rem] font-medium">
               <tr>
                 <th className="pl-6">Tournament</th>
                 <th>Series</th>

@@ -30,7 +30,7 @@ export default async function AdminNewsEditPage(props: { params: Promise<{ id: s
     <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
       <div className="flex items-end justify-between border-b border-base-content/[0.07] pb-6">
         <div>
-          <div className="eyebrow mb-2 text-primary">News</div>
+          <Link href="/admin/news" className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-[0.9375rem] font-medium text-season-ink/75 hover:text-season-ink"><span aria-hidden="true">←</span> News</Link>
           <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">{isNew ? "New article" : "Edit article"}</h1>
         </div>
         <Link href="/admin/news" className="btn btn-ghost btn-sm">← All news</Link>

@@ -1,5 +1,6 @@
 "use client";
 
+import { X } from "lucide-react";
 import { type ReactNode, useState, useTransition } from "react";
 import Link from "next/link";
 import { bulkSetFestivalAction, bulkSetSeriesAction, bulkUpdateEventsAction } from "./actions";
@@ -94,7 +95,7 @@ export default function EventsTable({ events, removed, series, festivals, header
             Remove from festival
           </button>
 
-          <button className="btn btn-sm btn-ghost btn-square ml-auto" onClick={() => setSelected([])} aria-label="Clear selection">✕</button>
+          <button className="btn btn-sm btn-ghost btn-square ml-auto" onClick={() => setSelected([])} aria-label="Clear selection"><X size={16} aria-hidden="true" /></button>
         </div>
       )}
 

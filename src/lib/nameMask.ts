@@ -1,8 +1,18 @@
 // src/lib/nameMask.ts
 
+/** Some imported names arrive HTML-escaped ("O&apos;Hara"); show them as written. */
+export function decodeEntities(s: string) {
+  return s
+    .replace(/&(apos|#0*39);/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 /** A name part is only usable if it has at least one letter (reports sometimes contain "." or "-"). */
 function clean(part?: string | null) {
-  const t = (part || "").trim();
+  const t = decodeEntities(part || "").trim();
   return /\p{L}/u.test(t) ? t : "";
 }
 

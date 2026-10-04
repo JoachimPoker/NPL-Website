@@ -1,28 +1,25 @@
 // src/app/players/loading.tsx
+// Mirrors the page: the title band with the search, then the ranked rows.
+const bone = "animate-pulse rounded-[3px] bg-white/[0.07]";
+
 export default function LoadingPlayers() {
   return (
-    <div aria-busy="true" aria-label="Loading players">
-      <div className="border-b border-base-content/[0.07]">
-        <div className="mx-auto max-w-7xl space-y-3 px-4 pb-7 pt-7 sm:px-6 md:pt-10 lg:px-8">
-          <div className="skeleton h-3 w-20" />
-          <div className="skeleton h-10 w-72" />
-          <div className="skeleton h-4 w-80" />
+    <div aria-busy="true" aria-label="Loading players" className="bg-season-night font-season">
+      <div className="flex min-h-[clamp(18rem,21vw,22.5rem)] items-end bg-[linear-gradient(180deg,#0b2629_0%,#06191c_100%)] px-4 pb-[clamp(2rem,3vw,3rem)] pt-[7.25rem] sm:px-[3.6vw]">
+        <div className="w-full space-y-4">
+          <div className={`${bone} h-14 w-64`} />
+          <div className={`${bone} h-5 w-80 max-w-full`} />
+          <div className={`${bone} h-12 w-full max-w-[34rem]`} />
         </div>
       </div>
-      <div className="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex gap-2">
-          {Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton h-8 w-24 rounded-full" />)}
-        </div>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-20 rounded-box" />)}
-        </div>
-        <ul className="panel">
+      <div className="px-4 pb-24 sm:px-[3.6vw]">
+        <div className={`${bone} h-11 w-64`} />
+        <ul className="mt-6 border-t border-white/[0.12]">
           {Array.from({ length: 10 }).map((_, i) => (
-            <li key={i} className="flex items-center gap-4 border-b border-base-content/[0.06] px-6 py-4 last:border-0">
-              <div className="skeleton h-4 w-6" />
-              <div className="skeleton h-9 w-9 rounded-[10px]" />
-              <div className="skeleton h-4 max-w-48 flex-1" />
-              <div className="skeleton ml-auto h-4 w-16" />
+            <li key={i} className="flex h-[3.75rem] items-center gap-6 border-b border-white/[0.07]">
+              <div className={`${bone} h-4 w-6`} />
+              <div className={`${bone} h-4 max-w-56 flex-1`} />
+              <div className={`${bone} ml-auto h-4 w-16`} />
             </li>
           ))}
         </ul>

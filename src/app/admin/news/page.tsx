@@ -14,7 +14,6 @@ export default async function AdminNewsPage() {
     <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
       <div className="flex flex-col gap-4 border-b border-base-content/[0.07] pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="eyebrow mb-2 text-primary">Admin</div>
           <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">News</h1>
           <p className="text-sm text-base-content/60">Announcements and tournament reports shown on the News page.</p>
         </div>
@@ -25,7 +24,7 @@ export default async function AdminNewsPage() {
 
       <div className="panel overflow-hidden">
         <table className="table table-sm w-full">
-          <thead className="bg-base-200/50 text-[10px] uppercase">
+          <thead className="bg-base-200/50 text-[0.8125rem]">
             <tr>
               <th>Title</th>
               <th className="hidden sm:table-cell">Category</th>

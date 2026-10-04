@@ -67,34 +67,34 @@ export default function AdminTools() {
 
         {/* MODAL WINDOW */}
         <dialog id="reset_modal" className="modal">
-          <div className="modal-box border border-base-content/10 shadow-2xl">
+          <div className="modal-box border border-base-content/10">
             <h3 className="mb-4 font-display text-xl font-semibold text-error">Database reset</h3>
             <p className="text-sm opacity-70 mb-6">Select exactly what you want to remove. Items not checked will be preserved.</p>
 
             <div className="space-y-3">
-              <label className="flex items-center justify-between p-3 bg-base-200 rounded-lg cursor-pointer hover:bg-base-300 transition-colors">
+              <label className="flex items-center justify-between p-3 bg-base-200 rounded-[3px] cursor-pointer hover:bg-base-300 transition-colors">
                 <span className="font-bold text-sm">Results & Positions</span>
                 <input type="checkbox" className="checkbox checkbox-error" checked={options.results} onChange={() => setOptions({...options, results: !options.results})} />
               </label>
 
-              <label className="flex items-center justify-between p-3 bg-base-200 rounded-lg cursor-pointer hover:bg-base-300 transition-colors">
+              <label className="flex items-center justify-between p-3 bg-base-200 rounded-[3px] cursor-pointer hover:bg-base-300 transition-colors">
                 <span className="font-bold text-sm">Events (Tournament Logs)</span>
                 <input type="checkbox" className="checkbox checkbox-error" checked={options.events} onChange={() => setOptions({...options, events: !options.events})} />
               </label>
 
-              <label className="flex items-center justify-between p-3 bg-base-200 rounded-lg cursor-pointer hover:bg-base-300 transition-colors">
+              <label className="flex items-center justify-between p-3 bg-base-200 rounded-[3px] cursor-pointer hover:bg-base-300 transition-colors">
                 <span className="font-bold text-sm">Players & Aliases</span>
                 <input type="checkbox" className="checkbox checkbox-error" checked={options.players} onChange={() => setOptions({...options, players: !options.players})} />
               </label>
 
               <div className="divider text-xs text-base-content/40">Core structure</div>
 
-              <label className="flex items-center justify-between p-3 bg-error/5 border border-error/10 rounded-lg cursor-pointer hover:bg-error/10 transition-colors">
+              <label className="flex items-center justify-between p-3 bg-error/5 border border-error/10 rounded-[3px] cursor-pointer hover:bg-error/10 transition-colors">
                 <span className="font-bold text-sm text-error">Seasons & Leagues</span>
                 <input type="checkbox" className="checkbox checkbox-error" checked={options.seasons} onChange={() => setOptions({...options, seasons: !options.seasons})} />
               </label>
 
-              <label className="flex items-center justify-between p-3 bg-error/5 border border-error/10 rounded-lg cursor-pointer hover:bg-error/10 transition-colors">
+              <label className="flex items-center justify-between p-3 bg-error/5 border border-error/10 rounded-[3px] cursor-pointer hover:bg-error/10 transition-colors">
                 <span className="font-bold text-sm text-error">Festivals & Series</span>
                 <input type="checkbox" className="checkbox checkbox-error" checked={options.festivals} onChange={() => setOptions({...options, festivals: !options.festivals})} />
               </label>

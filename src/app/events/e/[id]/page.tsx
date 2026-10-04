@@ -2,20 +2,29 @@ import Link from "next/link";
 import { pageMeta } from "@/lib/site";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { Trophy, Medal } from "lucide-react";
-import PageHeader from "@/components/PageHeader";
+import { MapPin, Trophy } from "lucide-react";
 import ShareButton from "@/components/ShareButton";
 import JsonLd from "@/components/JsonLd";
 import { SITE_URL } from "@/lib/site";
-import { Initial } from "@/components/HomeLeaderboard";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
 import { displayName } from "@/lib/nameMask";
 import { venueHref } from "@/lib/venues";
+import { TitleBand } from "@/components/tournaments/ComingUp";
+import { Badge, eventTitle, festivalTitle } from "@/components/tournaments/SeasonCalendar";
+import { getFestivalPhotos, getSiteImages } from "@/lib/siteImages";
 import {
   type EventSummary, type SeriesRow, gbp, gbpShort, day, eventHref, festivalHref, seriesHref, shortEventName,
 } from "@/lib/tournaments";
 
 export const revalidate = 300;
+
+const h2 = "text-[clamp(1.3125rem,1.6vw,1.6875rem)] font-semibold leading-tight";
+const ordinal = (n: number) => {
+  const t = n % 100;
+  return `${n}${t >= 11 && t <= 13 ? "th" : n % 10 === 1 ? "st" : n % 10 === 2 ? "nd" : n % 10 === 3 ? "rd" : "th"}`;
+};
+/** An event's own name within its festival, without the guarantee. */
+const siblingName = (name: string | null) => shortEventName(name).split(/\s+[-–]\s+£/)[0].trim();
 
 async function load(id: string) {
   const eventId = Number(id);
@@ -27,7 +36,7 @@ async function load(id: string) {
 
   const [{ data: series }, { data: festival }, { data: results }, { data: siblings }, { data: season }] = await Promise.all([
     ev.series_id
-      ? supabase.from("series").select("id, name, slug, description, logo_url, has_festivals, sort_order").eq("id", ev.series_id).maybeSingle()
+      ? supabase.from("series").select("*").eq("id", ev.series_id).maybeSingle()
       : Promise.resolve({ data: null }),
     ev.festival_id
       ? supabase.from("festivals").select("id, label").eq("id", ev.festival_id).maybeSingle()
@@ -74,14 +83,24 @@ export async function generateMetadata(props: { params: Promise<{ id: string }> 
   });
 }
 
+/** A player's name, linked to their profile when there is one. */
+function PlayerName({ id, name, className = "" }: { id?: number; name: string; className?: string }) {
+  if (!id) return <span className={className}>{name}</span>;
+  return <Link href={`/players/${id}`} className={`${className} decoration-current/40 underline-offset-4 hover:underline`}>{name}</Link>;
+}
+
 export default async function EventPage(props: { params: Promise<{ id: string }> }) {
+  const img = await getSiteImages();
+  const festivalPhotos = await getFestivalPhotos();
   const data = await load((await props.params).id);
   if (!data) notFound();
   const { ev, series, festival, rows, siblings, season } = data;
-  const podium = rows.filter((r) => r.position && r.position <= 3).slice(0, 3);
+  const winner = rows.find((r) => r.position === 1);
+  const placed = rows.filter((r) => r.position === 2 || r.position === 3).slice(0, 2);
+  const showSiblings = siblings.length > 1 && series && festival;
 
   return (
-    <>
+    <div className="bg-season-night font-season text-season-ink">
       <JsonLd
         data={{
           "@type": "SportsEvent",
@@ -94,136 +113,167 @@ export default async function EventPage(props: { params: Promise<{ id: string }>
           ...(ev.buy_in ? { offers: { "@type": "Offer", price: Number(ev.buy_in), priceCurrency: "GBP" } } : {}),
         }}
       />
-      <PageHeader
-        eyebrow={
-          <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2">
-            <Link href="/events" className="hover:text-primary">Tournaments</Link>
-            {series && (<><span className="text-base-content/30">/</span><Link href={seriesHref(series)} className="hover:text-primary">{series.name}</Link></>)}
-            {series && festival && (
-              <><span className="text-base-content/30">/</span><Link href={festivalHref(series, festival.id)} className="hover:text-primary">{festival.label}</Link></>
-            )}
-          </nav>
-        }
-        title={ev.name ?? "Tournament"}
-        description={
-          <>
-            {ev.casino ? <Link href={venueHref(ev.casino)} className="hover:text-primary">{ev.casino}</Link> : "Unknown venue"}
-            {` · ${day(ev.start_date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${season?.name ? ` · ${season.name}` : ""}`}
-          </>
-        }
-        actions={<ShareButton title={ev.name ?? "Tournament"} />}
-      >
-        <dl className="grid max-w-3xl grid-cols-2 gap-6 sm:grid-cols-4">
-          <Headline label="Buy-in" value={ev.buy_in ? gbp(Number(ev.buy_in)) : "Free"} />
-          <Headline label="Cashes" value={String(ev.entries)} />
-          <Headline label="Paid out" value={gbpShort(Number(ev.paid_out))} />
-          <Headline label="Winner won" value={ev.winner_prize ? gbp(Number(ev.winner_prize)) : "–"} />
-        </dl>
-        {ev.is_high_roller && <span className="badge badge-secondary mt-6">High Roller event</span>}
-      </PageHeader>
 
-      <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-12 lg:px-8">
-        <div className="space-y-10 lg:col-span-8">
-          {podium.length > 0 && (
-            <section aria-label="Podium" className="grid gap-4 sm:grid-cols-3">
-              {podium.map((r) => (
-                <div key={r.id} className={`panel p-5 ${r.position === 1 ? "ring-1 ring-primary/40" : ""}`}>
-                  <div className="flex items-center gap-2 text-sm text-base-content/55">
-                    {r.position === 1
-                      ? <Trophy size={16} className="text-primary" aria-hidden="true" />
-                      : <Medal size={16} aria-hidden="true" />}
-                    {r.position === 1 ? "Winner" : r.position === 2 ? "Runner-up" : "Third"}
-                  </div>
-                  <Link href={`/players/${r.playerId}`} className="mt-2 block truncate font-display text-xl font-semibold hover:text-primary">
-                    {r.name}
-                  </Link>
-                  <div className="mt-1 font-mono text-sm text-base-content/60">
-                    {r.prize ? gbp(r.prize) : "–"} · {r.points.toFixed(2)} pts
-                  </div>
-                </div>
-              ))}
-            </section>
+      <TitleBand image={(ev.festival_id ? festivalPhotos.get(String(ev.festival_id)) : null) || series?.image_url || img.room_2} position="object-[55%_50%]">
+        <nav aria-label="Breadcrumb" className="mb-5 flex flex-wrap items-center gap-x-2 text-[0.9375rem] font-medium text-season-ink/75">
+          <Link href="/events" className="inline-flex min-h-11 items-center hover:text-season-ink">Tournaments</Link>
+          {series && (
+            <>
+              <span aria-hidden="true" className="text-season-ink/40">/</span>
+              <Link href={seriesHref(series)} className="inline-flex min-h-11 items-center hover:text-season-ink">{series.name}</Link>
+            </>
           )}
+          {series && festival && (
+            <>
+              <span aria-hidden="true" className="text-season-ink/40">/</span>
+              <Link href={festivalHref(series, festival.id)} className="inline-flex min-h-11 items-center hover:text-season-ink">{festivalTitle(festival.label)}</Link>
+            </>
+          )}
+        </nav>
+        {series && <Badge series={series} className="h-8" />}
+        <h1 className="mt-4 max-w-[22em] text-[clamp(2.25rem,3.8vw,4.5rem)] font-bold leading-[1.04] tracking-[-0.012em] text-balance">{eventTitle(ev.name)}</h1>
+        <p className="mt-2 flex flex-wrap items-center gap-x-2 text-[clamp(1.0625rem,1.45vw,1.375rem)] font-medium text-season-muted">
+          <span>{day(ev.start_date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span>
+          {ev.casino && (
+            <>
+              <span aria-hidden="true">·</span>
+              <MapPin size={18} aria-hidden="true" className="text-season-muted" />
+              <Link href={venueHref(ev.casino)} className="hover:underline hover:decoration-season-ink/40 hover:underline-offset-4">{ev.casino}</Link>
+            </>
+          )}
+        </p>
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[1.0625rem] tabular-nums text-season-ink/65">
+          <span>{ev.buy_in ? `${gbp(Number(ev.buy_in))} buy-in` : "Free to enter"}</span>
+          <span aria-hidden="true">·</span>
+          <span>{ev.entries} cashes</span>
+          {season?.name && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>{season.name}</span>
+            </>
+          )}
+          {ev.is_high_roller && !/high roller/i.test(ev.name ?? "") && (
+            <span className="ml-1 rounded-[3px] px-1.5 text-[0.8125rem] font-semibold text-season-ink/85 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.22)]">High Roller</span>
+          )}
+        </p>
+      </TitleBand>
 
-          <section className="panel overflow-hidden" aria-labelledby="results-heading">
-            <div className="flex items-center justify-between border-b border-base-content/[0.07] px-6 py-5">
-              <h2 id="results-heading" className="font-display text-xl font-semibold tracking-tight">Results</h2>
-              <span className="text-sm text-base-content/45">{rows.length} cashes</span>
+      <div className="space-y-[clamp(3rem,5vw,5rem)] px-4 pb-[clamp(2.5rem,4vw,4rem)] sm:px-[3.6vw]">
+        {/* The podium: the winner leads, second and third follow quietly. */}
+        {winner && (
+          <section aria-labelledby="podium" className="flex flex-col border border-season-amber/60 bg-[linear-gradient(180deg,#14434a_0%,#0f3337_60%)] lg:flex-row">
+            <div className="flex min-w-0 flex-1 items-center gap-5 px-5 py-6 sm:px-8">
+              <Trophy size={34} strokeWidth={1.75} className="shrink-0 text-season-amber" aria-hidden="true" />
+              <div className="min-w-0">
+                <h2 id="podium" className="text-[1.0625rem] font-medium text-season-ink/75">Won by</h2>
+                <p className="text-[clamp(1.75rem,2.8vw,2.75rem)] font-bold leading-[1.05] tracking-[-0.01em] text-season-amber [overflow-wrap:anywhere]">
+                  <PlayerName id={winner.playerId} name={winner.name} />
+                </p>
+                <p className="mt-1 text-[0.9375rem] tabular-nums text-season-ink/75">
+                  {winner.points.toFixed(2)} pts{winner.prize ? ` · ${gbp(winner.prize)}` : ""}
+                </p>
+              </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="table w-full">
+            {placed.length > 0 && (
+              <ol className="flex border-t border-white/[0.1] lg:border-l lg:border-t-0">
+                {placed.map((r) => (
+                  <li key={r.id} className="min-w-0 flex-1 border-white/[0.1] px-5 py-5 sm:px-8 lg:flex lg:w-[16rem] lg:flex-col lg:justify-center [&+&]:border-l">
+                    <p className="text-[0.9375rem] text-season-muted">{r.position === 2 ? "Runner-up" : "Third"}</p>
+                    <p className="truncate text-[1.1875rem] font-semibold"><PlayerName id={r.playerId} name={r.name} /></p>
+                    <p className="text-[0.875rem] tabular-nums text-season-ink/70">{r.points.toFixed(2)} pts{r.prize ? ` · ${gbp(r.prize)}` : ""}</p>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <div className="flex items-center border-t border-white/[0.1] px-5 py-4 sm:px-8 lg:border-l lg:border-t-0">
+              <ShareButton
+                title={ev.name ?? "Tournament"}
+                className="inline-flex h-11 items-center gap-2 rounded-[3px] border border-white/[0.14] px-4 text-[0.9375rem] font-medium text-season-ink transition-colors hover:border-white/30"
+              />
+            </div>
+          </section>
+        )}
+
+        <div className={`grid gap-x-[clamp(2rem,4vw,4.5rem)] gap-y-14 ${showSiblings ? "lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]" : ""}`}>
+          {/* Every cash */}
+          <section aria-labelledby="results-heading" className="min-w-0">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+              <h2 id="results-heading" className={h2}>Results</h2>
+              <span className="text-[0.9375rem] tabular-nums text-season-muted">
+                {rows.length} {rows.length === 1 ? "cash" : "cashes"}
+                {Number(ev.paid_out) > 0 && ` · ${gbpShort(Number(ev.paid_out))} paid out`}
+              </span>
+            </div>
+            <div className="mt-5 overflow-x-auto">
+              <table className="w-full border-collapse text-left tabular-nums">
                 <thead>
-                  <tr>
-                    <th className="w-16 pl-6 text-center">#</th>
-                    <th>Player</th>
-                    <th className="text-right">Prize</th>
-                    <th className="pr-6 text-right">Points</th>
+                  <tr className="border-b border-white/[0.12] text-[0.875rem] text-season-muted">
+                    <th scope="col" className="w-16 pb-3 pr-3 font-medium">Finish</th>
+                    <th scope="col" className="w-full pb-3 font-medium">Player</th>
+                    <th scope="col" className="pb-3 pl-5 text-right font-medium">Prize</th>
+                    <th scope="col" className="pb-3 pl-5 text-right font-medium">Points</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id} className="transition-colors hover:bg-base-content/[0.03]">
-                      <td className="pl-6 text-center font-mono text-sm text-base-content/60">{r.position ?? "–"}</td>
-                      <td>
-                        <Link href={`/players/${r.playerId}`} className="group flex items-center gap-3 font-medium">
-                          <Initial name={r.name} />
-                          <span className="transition-colors group-hover:text-primary">{r.name}</span>
-                        </Link>
-                      </td>
-                      <td className="text-right font-mono text-sm">{r.prize ? gbp(r.prize) : <span className="text-base-content/30">–</span>}</td>
-                      <td className="pr-6 text-right font-mono text-sm font-semibold">
-                        {r.points.toFixed(2)}
-                        {r.penalty !== 0 && <span className="ml-1 text-xs font-normal text-error" title="Includes a penalty">({r.penalty})</span>}
-                      </td>
-                    </tr>
-                  ))}
+                  {rows.map((r) => {
+                    const podium = r.position != null && r.position <= 3;
+                    return (
+                      <tr key={r.id} className="border-b border-white/[0.07] transition-colors hover:bg-white/[0.025]">
+                        <td className={`pr-3 font-semibold ${podium ? "text-season-amber" : ""}`}>{r.position ? ordinal(r.position) : "–"}</td>
+                        <td className="max-w-0">
+                          <span className="block truncate py-3.5 text-[1.0625rem]">
+                            <PlayerName id={r.playerId} name={r.name} className={podium ? "font-semibold" : ""} />
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap pl-5 text-right text-season-ink/80">{r.prize ? gbp(r.prize) : <span className="text-season-muted">–</span>}</td>
+                        <td className={`whitespace-nowrap pl-5 text-right font-semibold ${podium ? "text-season-amber" : ""}`}>
+                          {r.points.toFixed(2)}
+                          {r.penalty !== 0 && <span className="ml-1.5 text-[0.8125rem] font-normal text-season-down" title="Includes a penalty">({r.penalty})</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!rows.length && (
+                    <tr><td colSpan={4} className="py-14 text-center text-season-ink/80">No results recorded for this event yet.</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
           </section>
-        </div>
 
-        {siblings.length > 1 && series && festival && (
-          <aside className="lg:col-span-4" aria-labelledby="festival-events">
-            <div className="panel sticky top-24 overflow-hidden">
-              <div className="border-b border-base-content/[0.07] px-5 py-4">
-                <div className="eyebrow">This festival</div>
-                <Link href={festivalHref(series, festival.id)} id="festival-events" className="font-display text-lg font-semibold hover:text-primary">
-                  {festival.label}
-                </Link>
+          {/* The rest of the festival */}
+          {showSiblings && (
+            <aside aria-labelledby="festival-events" className="min-w-0">
+              <div className="lg:sticky lg:top-8">
+                <h2 id="festival-events" className="text-[clamp(1.3125rem,1.6vw,1.6875rem)] font-semibold leading-tight">
+                  <Link href={festivalHref(series!, festival!.id)} className="decoration-season-ink/40 underline-offset-4 hover:underline">{festivalTitle(festival!.label)}</Link>
+                </h2>
+                <p className="mt-1 text-[0.9375rem] text-season-muted">Every event at this festival</p>
+                <ol className="mt-5 border-t border-white/[0.12]">
+                  {siblings.map((s) => {
+                    const here = s.id === ev.id;
+                    return (
+                      <li key={s.id} className="border-b border-white/[0.07]">
+                        <Link
+                          href={eventHref(s.id)}
+                          aria-current={here ? "page" : undefined}
+                          className={`group flex items-center justify-between gap-4 py-3 pl-3 transition-colors ${here ? "bg-season-amber/[0.1]" : "hover:bg-white/[0.025]"}`}
+                        >
+                          <span className="min-w-0">
+                            <span className={`block truncate text-[1rem] decoration-season-ink/40 underline-offset-4 group-hover:underline ${here ? "font-semibold" : "font-medium"}`}>{siblingName(s.name)}</span>
+                            <span className="block truncate text-[0.875rem] text-season-amber">{s.winner_name ?? <span className="text-season-muted">–</span>}</span>
+                          </span>
+                          <span className="shrink-0 pr-1 text-[0.875rem] tabular-nums text-season-muted">{day(s.start_date)}</span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ol>
               </div>
-              <ol className="divide-y divide-base-content/[0.06]">
-                {siblings.map((s) => (
-                  <li key={s.id}>
-                    <Link
-                      href={eventHref(s.id)}
-                      aria-current={s.id === ev.id ? "page" : undefined}
-                      className={`flex items-center justify-between gap-3 px-5 py-3 text-sm transition-colors hover:bg-base-content/[0.03] ${
-                        s.id === ev.id ? "bg-primary/[0.06] text-primary" : ""
-                      }`}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">{shortEventName(s.name)}</span>
-                        <span className="block truncate text-xs text-base-content/45">{s.winner_name ?? "–"}</span>
-                      </span>
-                      <span className="shrink-0 font-mono text-xs text-base-content/45">{day(s.start_date)}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          </aside>
-        )}
+            </aside>
+          )}
+        </div>
       </div>
-    </>
-  );
-}
-
-function Headline({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="eyebrow">{label}</dt>
-      <dd className="mt-1 font-display text-2xl font-semibold tracking-tight">{value}</dd>
     </div>
   );
 }

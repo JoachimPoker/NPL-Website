@@ -6,7 +6,7 @@ import { MapPin, Trophy } from "lucide-react";
 import ShareButton from "@/components/ShareButton";
 import JsonLd from "@/components/JsonLd";
 import { SITE_URL } from "@/lib/site";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { displayName } from "@/lib/nameMask";
 import { venueHref } from "@/lib/venues";
 import { TitleBand } from "@/components/tournaments/ComingUp";
@@ -17,6 +17,10 @@ import {
 } from "@/lib/tournaments";
 
 export const revalidate = 300;
+// None built ahead: each page is rendered on its first visit, then served from cache.
+export function generateStaticParams() {
+  return [];
+}
 
 const h2 = "text-[clamp(1.3125rem,1.6vw,1.6875rem)] font-semibold leading-tight";
 const ordinal = (n: number) => {
@@ -29,7 +33,7 @@ const siblingName = (name: string | null) => shortEventName(name).split(/\s+[-â€
 async function load(id: string) {
   const eventId = Number(id);
   if (!Number.isFinite(eventId)) return null;
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
 
   const { data: ev } = await supabase.from("event_summary").select("*").eq("id", eventId).maybeSingle();
   if (!ev) return null;

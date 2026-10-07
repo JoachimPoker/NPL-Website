@@ -1,9 +1,10 @@
 import SeasonHero from "@/components/home/SeasonHero";
 import LeagueLeaders, { type LeagueCard, type LeaderRow } from "@/components/home/LeagueLeaders";
 import { getHomeExtras } from "@/components/home/HomeExtras";
-import { ThisWeek, ThisSeason, LatestResults, News, type Gainer, type Trending } from "@/components/home/SeasonSections";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { ThisWeek, ThisSeason, LatestResults, News, type Gainer } from "@/components/home/SeasonSections";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { snapshots, type LeagueSlug } from "@/lib/leaderboards";
+import { getHomeData } from "@/lib/home";
 
 export const runtime = "nodejs";
 export const revalidate = 60;
@@ -15,7 +16,6 @@ type HomeResp = {
   season_meta: { id: number; label: string; start_date: string; end_date: string; cap_x: number };
   leagues: { slug: string; label: string; logo_url: string | null }[];
   leaderboards: Record<string, LeaderRow[]>;
-  trending_players?: Trending[];
   biggest_gainers?: Gainer[];
 };
 
@@ -35,10 +35,9 @@ function Unavailable() {
 }
 
 export default async function HomePage() {
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-  const [res, extras] = await Promise.all([fetch(`${base}/api/home`, { cache: "no-store" }), getHomeExtras()]);
-  if (!res.ok) return <Unavailable />;
-  const data = (await res.json()) as HomeResp;
+  // Loaded directly (not through /api/home) so the page can be cached and costs one function call.
+  const [home, extras] = await Promise.all([getHomeData(), getHomeExtras()]);
+  const data = home as unknown as HomeResp;
   if (!data?.ok || !data.leagues?.length) return <Unavailable />;
 
   const leagues: LeagueCard[] = data.leagues.map((l) => ({ ...l, rows: (data.leaderboards?.[l.slug] ?? []).slice(0, 5) }));
@@ -48,7 +47,7 @@ export default async function HomePage() {
   // Freshness: the latest weekly report's last tournament date for the main league.
   let resultsTo: string | null = null;
   try {
-    const db = await createSupabaseServerClient();
+    const db = createSupabasePublicClient();
     const snap = data.season_meta?.id ? await snapshots(db, data.season_meta.id, main.slug as LeagueSlug) : null;
     resultsTo = snap?.latest ? day(snap.latest) : null;
   } catch {

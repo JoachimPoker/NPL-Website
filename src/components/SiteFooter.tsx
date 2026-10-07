@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Logo } from '@/components/brand/Logo'
-import { createSupabaseServerClient } from '@/lib/supabaseServer'
+import { createSupabasePublicClient } from '@/lib/supabasePublic'
 import { TERMS_DOCS } from '@/lib/leagueTerms'
 import { LEGAL_LINKS } from '@/lib/legal'
 
@@ -13,7 +13,7 @@ const GROUPS: { title: string; links: [string, string][] }[] = [
 /** Every active series, in the admin's order (the catch-all "Others" left out), so new series appear here by themselves. */
 async function seriesLinks(): Promise<[string, string][]> {
   try {
-    const db = await createSupabaseServerClient()
+    const db = createSupabasePublicClient()
     const { data } = await db.from('series').select('name, slug').eq('is_active', true).neq('slug', 'others').order('sort_order')
     return (data || []).map((s) => [s.name, `/events/${s.slug}`])
   } catch {

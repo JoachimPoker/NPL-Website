@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { ArrowRight, MapPin, Trophy } from "lucide-react";
 import ShareButton from "@/components/ShareButton";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { venueHref } from "@/lib/venues";
 import { decodeEntities } from "@/lib/nameMask";
 import { TitleBand } from "@/components/tournaments/ComingUp";
@@ -16,13 +16,17 @@ import {
 } from "@/lib/tournaments";
 
 export const revalidate = 300;
+// None built ahead: each page is rendered on its first visit, then served from cache.
+export function generateStaticParams() {
+  return [];
+}
 
 const h2 = "text-[clamp(1.3125rem,1.6vw,1.6875rem)] font-semibold leading-tight";
 /** The event's own name within the festival, without its guarantee ("Mini Main", not "Mini Main – £100,000 GTD"). */
 const eventName = (name: string | null) => shortEventName(name).split(/\s+[-–]\s+£/)[0].trim();
 
 async function load(seriesParam: string, festivalId: string) {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
   const { data: festival } = await supabase.from("festival_summary").select("*").eq("id", festivalId).maybeSingle();
   if (!festival) return null;
 

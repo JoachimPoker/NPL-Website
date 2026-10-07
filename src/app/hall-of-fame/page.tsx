@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { pageMeta } from "@/lib/site";
 import { Seal } from "@/components/badges/BadgeMedal";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { decodeEntities } from "@/lib/nameMask";
 import { gbp } from "@/lib/tournaments";
 import { type SealText, sealNumber } from "@/lib/badgeSeal";
@@ -55,7 +55,7 @@ export default async function HallOfFamePage() {
   const img = await getSiteImages();
   // The plaques' marble (replaceable in admin), under the plaque's light and shade gradients.
   const marble = { backgroundImage: `radial-gradient(ellipse at 50% 0%, rgb(70 150 150 / 0.22) 0%, transparent 60%), linear-gradient(180deg, rgb(6 25 28 / 0) 40%, rgb(6 25 28 / 0.45) 100%), url(${img.plaque_marble})` };
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
   const [{ data: podiumData }, { data: recordData }] = await Promise.all([
     supabase.rpc("hall_of_fame_podiums"),
     supabase.rpc("hall_of_fame_records", { p_limit: 5 }),

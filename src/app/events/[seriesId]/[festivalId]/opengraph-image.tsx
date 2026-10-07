@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { ogCard, OG_SIZE, gbpOg } from "@/lib/og";
 import { dateRange } from "@/lib/tournaments";
 
@@ -6,9 +6,13 @@ export const size = OG_SIZE;
 export const alt = "Festival results";
 export const contentType = "image/png";
 export const revalidate = 3600;
+// None built ahead: each image is drawn on first request, then served from cache.
+export function generateStaticParams() {
+  return [];
+}
 
 export default async function Image(props: { params: Promise<{ festivalId: string }> }) {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
   const { data: f } = await supabase.from("festival_summary").select("*").eq("id", (await props.params).festivalId).maybeSingle();
   if (!f) return ogCard({ eyebrow: "Tournaments", title: "Festival not found" });
 

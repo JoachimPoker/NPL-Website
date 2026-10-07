@@ -3,14 +3,18 @@ import { pageMeta } from "@/lib/site";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { ArrowLeft, ExternalLink } from "lucide-react";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 
 export const revalidate = 60;
+// None built ahead: each page is rendered on its first visit, then served from cache.
+export function generateStaticParams() {
+  return [];
+}
 
 async function getArticle(id: string) {
   const articleId = Number(id);
   if (!Number.isFinite(articleId)) return null;
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
   const { data } = await supabase
     .from("news")
     .select("id, title, category, excerpt, content, image_url, social_link, published_at")

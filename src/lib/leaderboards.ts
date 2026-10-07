@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { baseKey, type BadgeDefinition } from "@/lib/badges";
 
 export const PAGE_SIZE = 50;
@@ -37,7 +37,7 @@ export type BoardRow = {
 };
 export type Prize = { position_from: number; position_to: number; prize_description: string; prize_amount: number | null };
 
-type Db = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+type Db = Awaited<ReturnType<typeof createSupabasePublicClient>>;
 
 const LEAGUE_ORDER: Record<string, number> = { npl: 0, hrl: 1, lrl: 2 };
 

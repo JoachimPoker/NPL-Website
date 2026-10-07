@@ -7,7 +7,7 @@ import TitleSeals from "@/components/badges/TitleSeals";
 import { LEAGUE_MARKS } from "@/components/home/LeagueLeaders";
 import RaceChart from "@/components/leaderboards/RaceChart";
 import PendingDot from "@/components/leaderboards/PendingDot";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { getSiteImages } from "@/lib/siteImages";
 import {
   type BoardRow, type LeagueSlug, type Prize, type TitleIcon,
@@ -82,7 +82,7 @@ function SwitchLink({ href, active, children }: { href: string; active: boolean;
 
 export default async function LeaderboardsPage(props: { searchParams: Promise<SP> }) {
   const sp = await props.searchParams;
-  const db = await createSupabaseServerClient();
+  const db = createSupabasePublicClient();
 
   const seasons = await getSeasons(db);
   const allTime = sp.season === "all";

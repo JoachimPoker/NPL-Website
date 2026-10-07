@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowDown, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { pageMeta } from "@/lib/site";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { decodeEntities } from "@/lib/nameMask";
 import { type AllTimeSort, type TitleIcon, PAGE_SIZE, allTimeBoard, titlesFor } from "@/lib/leaderboards";
 import TitleSeals from "@/components/badges/TitleSeals";
@@ -53,7 +53,7 @@ export default async function PlayersPage(props: { searchParams: Promise<{ q?: s
   const sort: AllTimeSort = SORTS.some((s) => s.key === sp.sort) ? (sp.sort as AllTimeSort) : "points";
   const page = Math.max(1, Number(sp.page) || 1);
 
-  const db = await createSupabaseServerClient();
+  const db = createSupabasePublicClient();
   let board: Awaited<ReturnType<typeof allTimeBoard>> | null = null;
   try {
     board = await allTimeBoard(db, "npl", sort, page, q || null);

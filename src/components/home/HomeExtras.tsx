@@ -1,10 +1,10 @@
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { type EventSummary, type FestivalSummary, type SeriesRow } from "@/lib/tournaments";
 import { getUpcoming } from "@/lib/venues";
 
 /** Everything the home page's lower sections need (This season, Latest results, News), in parallel. */
 export async function getHomeExtras() {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
   const upcomingPromise = getUpcoming({ limit: 3 });
   const { data: season } = await supabase.from("seasons").select("id, name").eq("is_active", true).maybeSingle();
   const sid = season?.id ?? -1;

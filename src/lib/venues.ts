@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import type { Database } from "@/types/supabase";
 
 export type VenueSummary = Database["public"]["Views"]["venue_summary"]["Row"];
@@ -11,14 +11,14 @@ export const venueSlug = (casino: string) =>
 export const venueHref = (casino: string) => `/venues/${venueSlug(casino)}`;
 
 export async function getVenues() {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
   const { data } = await supabase.from("venue_summary").select("*").order("events", { ascending: false });
   return (data || []) as VenueSummary[];
 }
 
 /** Upcoming (or still running) events, soonest first. */
 export async function getUpcoming(opts: { seriesId?: number; casino?: string; limit?: number } = {}) {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
   const today = new Date().toISOString().slice(0, 10);
   let q = supabase
     .from("upcoming_events")

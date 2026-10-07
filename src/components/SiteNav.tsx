@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Menu, X } from 'lucide-react'
+import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser'
+import { isAdminUser } from '@/lib/isAdmin'
 
 /** The main menu on wide screens: the sections people come for, in the order they use them. */
 const LINKS = [
@@ -23,7 +25,20 @@ const GROUPS: { title: string; links: { label: string; href: string }[] }[] = [
   { title: 'Players', links: [{ label: 'All players', href: '/players' }, { label: 'Compare players', href: '/compare' }] },
 ]
 
-export default function SiteNav({ isAdmin, signedIn }: { isAdmin: boolean; signedIn: boolean }) {
+/** Who's signed in, read in the browser so pages stay cacheable. Only decides which links show: /admin is guarded in src/proxy.ts. */
+function useAccount() {
+  const [account, setAccount] = useState({ signedIn: false, isAdmin: false })
+  useEffect(() => {
+    const { data: sub } = createSupabaseBrowserClient().auth.onAuthStateChange((_event, session) => {
+      setAccount({ signedIn: !!session, isAdmin: isAdminUser(session?.user) })
+    })
+    return () => sub.subscription.unsubscribe()
+  }, [])
+  return account
+}
+
+export default function SiteNav() {
+  const { isAdmin, signedIn } = useAccount()
   const pathname = usePathname()
   // The menu is open for the page it was opened on, so moving to another page closes it.
   const [openOn, setOpenOn] = useState<string | null>(null)

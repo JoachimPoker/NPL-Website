@@ -6,7 +6,6 @@ import { getPlayerProfile } from "@/lib/data";
 import { getCareer } from "@/lib/career";
 import { pageMeta } from "@/lib/site";
 import ShareButton from "@/components/ShareButton";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
 import SeasonPointsChart from "@/components/SeasonPointsChart";
 import Medal from "@/components/badges/Medal";
 import { LEAGUE_MARKS } from "@/components/home/LeagueLeaders";
@@ -303,13 +302,6 @@ export default async function PlayerProfile(props: {
   const sp = await props.searchParams;
   const tab: Tab = sp.tab === "results" || sp.tab === "achievements" ? sp.tab : "overview";
 
-  // 1. TRACKING
-  const supabase = await createSupabaseServerClient();
-  try {
-    if (Number.isFinite(Number(id))) await supabase.from("player_searches").insert({ player_id: Number(id) });
-  } catch { /* counting a view is best-effort */ }
-
-  // 2. FETCH DATA
   const data = await getPlayerProfile(id);
 
   if (!data) {

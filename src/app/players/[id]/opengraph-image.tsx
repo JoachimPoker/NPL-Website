@@ -5,6 +5,10 @@ export const size = OG_SIZE;
 export const alt = "Player profile";
 export const contentType = "image/png";
 export const revalidate = 3600;
+// None built ahead: each image is drawn on first request, then served from cache.
+export function generateStaticParams() {
+  return [];
+}
 
 export default async function Image(props: { params: Promise<{ id: string }> }) {
   const career = await getCareer(Number((await props.params).id));

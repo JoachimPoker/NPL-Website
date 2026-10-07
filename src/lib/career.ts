@@ -1,5 +1,6 @@
 import { cache } from "react";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { unstable_cache } from "next/cache";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { displayName } from "@/lib/nameMask";
 
 export type CareerResult = {
@@ -35,7 +36,7 @@ export type Career = Awaited<ReturnType<typeof getCareer>>;
 /** A player's whole career: every result (newest first), totals and season-by-season lines. */
 async function loadCareer(playerId: number) {
   if (!Number.isFinite(playerId)) return null;
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
 
   const [{ data: player }, { data: rows }, { data: seasons }, { data: snapshots }] = await Promise.all([
     supabase.from("players").select("id, forename, surname, display_name, avatar_url, gdpr, badge_count").eq("id", playerId).maybeSingle(),
@@ -135,5 +136,10 @@ export function headToHead(a: CareerResult[], b: CareerResult[]) {
   return { shared, aAhead, bAhead };
 }
 
-/** Cached per request, so a page and its metadata share one load. */
-export const getCareer = cache(loadCareer);
+/**
+ * Cached per request (a page and its metadata share one load) and for five minutes across
+ * requests, so a profile's tabs, sorts and share image don't each re-query the database.
+ */
+export const getCareer = cache((playerId: number) =>
+  unstable_cache(() => loadCareer(playerId), ["career", String(playerId)], { revalidate: 300, tags: ["careers"] })()
+);

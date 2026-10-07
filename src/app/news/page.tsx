@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { pageMeta } from "@/lib/site";
 import { getSiteImages } from "@/lib/siteImages";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 
 export const metadata = pageMeta({ title: "News", description: "League news, results round-ups and announcements.", path: "/news" });
 export const revalidate = 60;
@@ -23,7 +23,7 @@ const fmt = (d: string | null) =>
 
 export default async function NewsPage() {
   const img = await getSiteImages();
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
   const { data } = await supabase
     .from("news")
     .select("id, title, category, excerpt, image_url, published_at, is_featured")

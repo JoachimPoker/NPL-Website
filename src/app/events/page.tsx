@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { pageMeta } from "@/lib/site";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { type EventSummary, type FestivalSummary, type SeriesRow, day, eventHref } from "@/lib/tournaments";
 import { type UpcomingEvent, getUpcoming } from "@/lib/venues";
 import { ComingUp, TitleBand } from "@/components/tournaments/ComingUp";
@@ -18,7 +18,7 @@ const more = "group inline-flex min-h-11 items-center gap-2 text-[0.9375rem] fon
 export default async function TournamentsPage(props: { searchParams: Promise<{ season?: string }> }) {
   const img = await getSiteImages();
   const sp = await props.searchParams;
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
 
   const { data: seasons } = await supabase.from("seasons").select("id, name, year, is_active").order("year", { ascending: false });
   const season = seasons?.find((s) => String(s.year) === sp.season) ?? seasons?.find((s) => s.is_active) ?? seasons?.[0];

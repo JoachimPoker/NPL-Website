@@ -2,7 +2,7 @@
 // Every replaceable photo on the site. Admins upload replacements at /admin/images; until they do (or if the
 // site_images table isn't there yet) each spot shows its built-in default, a generated stand-in.
 import { cache } from "react";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 
 export type SiteImageKey =
   | "home_hero" | "home_week"
@@ -60,7 +60,7 @@ export type SiteImages = Record<SiteImageKey, string> & { rooms: string[] };
 export const getSiteImages = cache(async (): Promise<SiteImages> => {
   const out: Record<string, string> = { ...DEFAULT_IMAGES };
   try {
-    const db = await createSupabaseServerClient();
+    const db = createSupabasePublicClient();
     const { data, error } = await db.from("site_images" as any).select("key, url");
     if (!error) for (const r of (data || []) as unknown as { key: string; url: string }[]) if (r.url && r.key in out) out[r.key] = r.url;
   } catch {
@@ -72,7 +72,7 @@ export const getSiteImages = cache(async (): Promise<SiteImages> => {
 
 /** Which uploaded replacements exist, for the admin page. */
 export async function getSiteImageOverrides() {
-  const db = await createSupabaseServerClient();
+  const db = createSupabasePublicClient();
   const { data, error } = await db.from("site_images" as any).select("key, url, updated_at");
   return { rows: ((data || []) as unknown as { key: string; url: string; updated_at: string }[]), missingTable: !!error };
 }
@@ -80,7 +80,7 @@ export async function getSiteImageOverrides() {
 /** Festival photos by festival id (empty until the festival photo column exists). Read once per request. */
 export const getFestivalPhotos = cache(async (): Promise<Map<string, string>> => {
   try {
-    const db = await createSupabaseServerClient();
+    const db = createSupabasePublicClient();
     const { data, error } = await db.from("festivals").select("id, image_url" as any).not("image_url" as any, "is", null);
     if (error) return new Map();
     return new Map(((data || []) as unknown as { id: string; image_url: string }[]).map((r) => [String(r.id), r.image_url]));
@@ -92,7 +92,7 @@ export const getFestivalPhotos = cache(async (): Promise<Map<string, string>> =>
 /** Venue photos by venue (casino) name (empty until the venue photos table exists). Read once per request. */
 export const getVenuePhotos = cache(async (): Promise<Map<string, string>> => {
   try {
-    const db = await createSupabaseServerClient();
+    const db = createSupabasePublicClient();
     const { data, error } = await db.from("venue_images" as any).select("casino, url");
     if (error) return new Map();
     return new Map(((data || []) as unknown as { casino: string; url: string }[]).map((r) => [r.casino, r.url]));

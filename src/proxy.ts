@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { isAdminUser } from "@/lib/isAdmin";
 
-// Refreshes the Supabase auth session on every request so logins don't silently expire.
+// Refreshes the Supabase auth session so logins don't silently expire, and guards admin routes.
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -42,8 +42,8 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+// Only where the server reads the login: running on public pages would cost a function call
+// per visit, even for pages served from cache. The browser client keeps its own session fresh.
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
-  ],
+  matcher: ["/admin/:path*", "/api/:path*", "/logout"],
 };

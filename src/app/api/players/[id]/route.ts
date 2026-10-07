@@ -25,14 +25,6 @@ export async function GET(
   
   const supabase = await createSupabaseRouteClient();
 
-  // --- Track that this player was viewed ---
-  try {
-    await supabase.from("player_searches").insert({ player_id: playerId });
-  } catch (error) {
-    console.error("Error tracking player view:", error);
-  }
-  // ----------------------------------------
-
   // Fetch Player Basic Info
   const { data: player, error: pErr } = await supabase
     .from("players")

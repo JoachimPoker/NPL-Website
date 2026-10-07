@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { pageMeta } from "@/lib/site";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { formatRules, getLeagues, getSeasons } from "@/lib/leaderboards";
 import { type SeriesRow } from "@/lib/tournaments";
 import { LEAGUE_MARKS } from "@/components/home/LeagueLeaders";
@@ -29,7 +29,7 @@ const LEAGUE_LINE: Record<string, string> = {
 
 export default async function AboutPage() {
   const img = await getSiteImages();
-  const db = await createSupabaseServerClient();
+  const db = createSupabasePublicClient();
   const seasons = await getSeasons(db);
   const season = seasons.find((s) => s.is_active) ?? seasons[0] ?? null;
   const [leagues, { count: events }, { data: venues }, { data: seriesData }] = await Promise.all([

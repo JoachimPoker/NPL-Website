@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { getCareer } from "@/lib/career";
 import { type BadgeDefinition, type PlayerBadge, ACHIEVEMENTS, BADGE_CATEGORY_ORDER, baseKey } from "@/lib/badges";
 
@@ -8,7 +8,7 @@ export async function getPlayerProfile(id: string) {
   if (!career) return null;
   const { player, results, totals, seasons } = career;
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
   const [{ data: awards }, { data: badgeDefs }, { data: seriesRows }] = await Promise.all([
     supabase.from("player_badges").select("id, badge_key, badge_name, season_year, awarded_at, awarded_by, event_id, festival_id, occasion").eq("player_id", playerId),
     supabase.from("badge_definitions").select("*").eq("is_active", true).order("display_order"),

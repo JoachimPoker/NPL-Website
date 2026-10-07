@@ -2,7 +2,7 @@ import { pageMeta } from "@/lib/site";
 import Medal from "@/components/badges/Medal";
 import RuledHeading from "@/components/RuledHeading";
 import { TitleBand } from "@/components/tournaments/ComingUp";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { getSiteImages } from "@/lib/siteImages";
 import { type BadgeDefinition, ACHIEVEMENTS, BADGE_CATEGORY_ORDER, TIER_LABEL } from "@/lib/badges";
 
@@ -27,7 +27,7 @@ function percent(held: number, players: number) {
  */
 export default async function BadgesPage() {
   const img = await getSiteImages();
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
   const [{ data }, { data: stats }, { count: playerCount }] = await Promise.all([
     supabase.from("badge_definitions").select("*").eq("is_active", true).order("display_order"),
     supabase.from("badge_stats").select("key, holders"),

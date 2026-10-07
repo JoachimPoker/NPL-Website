@@ -1,6 +1,6 @@
 'use server'
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/adminAuth";
 import { createSupabaseAdminClient } from "@/lib/supabaseAdmin";
@@ -25,6 +25,7 @@ function refresh() {
   revalidatePath("/admin/badges", "layout");
   revalidatePath("/badges");
   revalidatePath("/players", "layout");
+  revalidateTag("careers", "max"); // cached player careers (src/lib/career.ts)
 }
 
 export async function saveBadgeAction(formData: FormData) {

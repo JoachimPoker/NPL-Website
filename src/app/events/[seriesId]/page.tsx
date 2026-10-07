@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { getUpcoming } from "@/lib/venues";
 import { decodeEntities } from "@/lib/nameMask";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { type EventSummary, type FestivalSummary, type SeriesRow, day, eventHref } from "@/lib/tournaments";
 import { ComingUp, TitleBand } from "@/components/tournaments/ComingUp";
 import { getSiteImages } from "@/lib/siteImages";
@@ -29,7 +29,7 @@ const PAGE_SIZE = 25;
 
 /** Series pages live at /events/<slug>; old numeric links (/events/12) still work. */
 async function findSeries(param: string) {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
   const cols = "*";
   const bySlug = await supabase.from("series").select(cols).eq("slug", param).maybeSingle();
   if (bySlug.data) return bySlug.data as SeriesRow;
@@ -47,7 +47,7 @@ export async function generateMetadata(props: { params: Promise<{ seriesId: stri
 }
 
 /** The whole series table: the API returns at most 1,000 rows per request, so read it in pages. */
-async function allSeriesRows(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, seriesId: number, scope: string) {
+async function allSeriesRows(supabase: Awaited<ReturnType<typeof createSupabasePublicClient>>, seriesId: number, scope: string) {
   const rows: LbRow[] = [];
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
@@ -72,7 +72,7 @@ export default async function SeriesPage(props: {
   if (!series) notFound();
 
   const scope = sp.scope === "all_time" ? "all_time" : "season";
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
   const { data: activeSeason } = await supabase.from("seasons").select("id, name, year").eq("is_active", true).maybeSingle();
 
   const [{ data: lbRows, error: lbError }, { data: eventData }, { data: festivalData }, upcoming] = await Promise.all([

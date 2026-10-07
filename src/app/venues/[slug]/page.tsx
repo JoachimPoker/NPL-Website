@@ -3,7 +3,7 @@ import { pageMeta } from "@/lib/site";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { ArrowLeft } from "lucide-react";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { createSupabasePublicClient } from "@/lib/supabasePublic";
 import { decodeEntities } from "@/lib/nameMask";
 import { getVenues, getUpcoming, venueSlug } from "@/lib/venues";
 import { type EventSummary, type FestivalSummary, type SeriesRow, gbp, day } from "@/lib/tournaments";
@@ -12,6 +12,10 @@ import { getSiteImages, getVenuePhotos } from "@/lib/siteImages";
 import { EventRows, FestivalStrip } from "@/components/tournaments/SeasonCalendar";
 
 export const revalidate = 600;
+// None built ahead: each page is rendered on its first visit, then served from cache.
+export function generateStaticParams() {
+  return [];
+}
 
 const h2 = "text-[clamp(1.3125rem,1.6vw,1.6875rem)] font-semibold leading-tight";
 
@@ -35,7 +39,7 @@ export default async function VenuePage(props: { params: Promise<{ slug: string 
   const venue = await findVenue((await props.params).slug);
   if (!venue) notFound();
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicClient();
   const [{ data: events }, { data: festivals }, { data: series }, { data: top }, upcoming] = await Promise.all([
     supabase.from("event_summary").select("*").eq("casino", venue.casino).order("start_date", { ascending: false }).limit(12),
     supabase.from("festival_summary").select("*").eq("casino", venue.casino).order("start_date", { ascending: false }).limit(6),

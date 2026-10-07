@@ -8,7 +8,6 @@ import { venueHref } from "@/lib/venues";
 
 type Extras = Awaited<ReturnType<typeof getHomeExtras>>;
 export type Gainer = { player_id: string; display_name: string; from_pos: number; to_pos: number; delta: number; is_anonymized?: boolean };
-export type Trending = { player_id: string; hits: number; display_name: string; is_anonymized?: boolean };
 
 /** Home-page title for a tournament: the prize-pool suffix ("- £15,000 GTD") is dropped, the league celebrates play, not money. */
 const playTitle = (name: string | null) => (name ?? "Tournament").replace(/\s*[-–]\s*£[\d,.]+\s*(?:GTD)?\s*$/i, "").trim();
@@ -49,7 +48,7 @@ function SectionTitle({ id, title, line, link }: { id: string; title: string; li
 
 /* ---------------- This week: a film-still band ---------------- */
 
-export async function ThisWeek({ gainers: allGainers }: { gainers: Gainer[]; trending?: Trending[] }) {
+export async function ThisWeek({ gainers: allGainers }: { gainers: Gainer[] }) {
   const img = await getSiteImages();
   // Players who have not agreed to be named are left out entirely (GDPR).
   const gainers = allGainers.filter((g) => !g.is_anonymized).slice(0, 3);

@@ -111,7 +111,7 @@ export default async function SeriesPage(props: {
   return (
     <div className="bg-season-night font-season text-season-ink">
       <TitleBand image={series.image_url || img.room_3} position="object-[60%_55%]">
-        <Link href="/events" className="mb-5 inline-flex min-h-11 items-center gap-1.5 text-[0.9375rem] font-medium text-season-ink/75 hover:text-season-ink">
+        <Link prefetch={false} href="/events" className="mb-5 inline-flex min-h-11 items-center gap-1.5 text-[0.9375rem] font-medium text-season-ink/75 hover:text-season-ink">
           <ArrowLeft size={16} strokeWidth={2.25} aria-hidden="true" /> Tournaments
         </Link>
         <h1 className="m-0">
@@ -153,7 +153,7 @@ export default async function SeriesPage(props: {
                   { key: "season", label: "This season" },
                   { key: "all_time", label: "All-time" },
                 ].map((o) => (
-                  <Link
+                  <Link prefetch={false}
                     key={o.key}
                     href={`${href({ scope: o.key, page: 1 })}#standings`}
                     scroll={false}
@@ -193,7 +193,7 @@ export default async function SeriesPage(props: {
                         <tr key={r.player_id} className="border-b border-white/[0.07] transition-colors hover:bg-white/[0.025]">
                           <td className={`pr-3 text-[1.0625rem] font-semibold ${podium ? "text-season-amber" : ""}`}>{r.position}</td>
                           <td className="max-w-0">
-                            <Link href={`/players/${r.player_id}`} className={`block min-h-14 truncate py-4 text-[1.0625rem] decoration-season-ink/40 underline-offset-4 hover:underline ${podium ? "font-semibold" : ""}`}>
+                            <Link prefetch={false} href={`/players/${r.player_id}`} className={`block min-h-14 truncate py-4 text-[1.0625rem] decoration-season-ink/40 underline-offset-4 hover:underline ${podium ? "font-semibold" : ""}`}>
                               {r.display_name}
                             </Link>
                           </td>
@@ -231,7 +231,7 @@ export default async function SeriesPage(props: {
                 <ol className="mt-5 border-t border-white/[0.12]">
                   {events.slice(0, 6).map((e) => (
                     <li key={e.id} className="border-b border-white/[0.07]">
-                      <Link href={eventHref(e.id)} className="group block py-3.5">
+                      <Link prefetch={false} href={eventHref(e.id)} className="group block py-3.5">
                         <span className="block truncate text-[1.0625rem] font-semibold text-season-amber">{e.winner_name ?? "–"}</span>
                         <span className="block truncate text-[0.9375rem] decoration-season-ink/40 underline-offset-4 group-hover:underline" title={e.name ?? ""}>{eventTitle(e.name)}</span>
                         <span className="block text-[0.875rem] tabular-nums text-season-muted">{day(e.start_date, { day: "numeric", month: "short", year: "numeric" })}</span>
@@ -254,7 +254,7 @@ export default async function SeriesPage(props: {
                       <div className="min-w-0">
                         <dt className="text-[0.9375rem] text-season-muted">{label}</dt>
                         <dd className="truncate text-[1.0625rem] font-semibold">
-                          <Link href={`/players/${row!.player_id}`} className="decoration-season-ink/40 underline-offset-4 hover:underline">{row!.display_name}</Link>
+                          <Link prefetch={false} href={`/players/${row!.player_id}`} className="decoration-season-ink/40 underline-offset-4 hover:underline">{row!.display_name}</Link>
                         </dd>
                       </div>
                       <dd className="shrink-0 text-[1.75rem] font-bold tabular-nums text-season-amber">{value(row!)}</dd>
@@ -297,7 +297,7 @@ function PagerArrow({ dir, href }: { dir: "prev" | "next"; href: string | null }
       </span>
     );
   return (
-    <Link href={href} scroll={false} className={`${cls} hover:bg-white/[0.06]`} aria-label={label}>
+    <Link prefetch={false} href={href} scroll={false} className={`${cls} hover:bg-white/[0.06]`} aria-label={label}>
       <Icon size={18} aria-hidden="true" />
     </Link>
   );

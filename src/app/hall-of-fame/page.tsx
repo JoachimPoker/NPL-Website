@@ -116,7 +116,7 @@ export default async function HallOfFamePage() {
                       <li key={`${s.year}-${slug}`} style={marble} className={`${plaque} flex flex-col items-center px-5 pb-6 pt-5 text-center`}>
                         <Seal seal={championSeal(slug, s.year, false)} px={112} label={`${first.league_label} champion ${s.year}`} />
                         <Link
-                          href={`/players/${first.player_id}`}
+                          prefetch={false} href={`/players/${first.player_id}`}
                           className="mt-4 text-[clamp(1.25rem,1.6vw,1.5rem)] font-semibold leading-[1.15] [overflow-wrap:anywhere] decoration-current/40 underline-offset-4 hover:underline"
                         >
                           {first.display_name}
@@ -145,7 +145,7 @@ export default async function HallOfFamePage() {
                       <Seal seal={championSeal(slug, current.year, true)} px={88} />
                       <div className="min-w-0">
                         <p className="text-[0.875rem] text-season-muted">{LEAGUE_SEAL[slug]?.short ?? first.league_label} Leader</p>
-                        <Link href={`/players/${first.player_id}`} className="block truncate text-[1.25rem] font-semibold leading-snug decoration-season-ink/40 underline-offset-4 hover:underline">
+                        <Link prefetch={false} href={`/players/${first.player_id}`} className="block truncate text-[1.25rem] font-semibold leading-snug decoration-season-ink/40 underline-offset-4 hover:underline">
                           {first.display_name}
                         </Link>
                         <p className="text-[0.9375rem] tabular-nums text-season-ink/75">{pts(first.total_points)} pts</p>
@@ -165,7 +165,7 @@ export default async function HallOfFamePage() {
             <ul className="grid border-b border-white/[0.08] sm:grid-cols-2 lg:grid-cols-3">
               {roll.map((t) => (
                 <li key={t.id} className="py-3 sm:px-6 sm:first:pl-0 lg:[&+&]:border-l lg:[&+&]:border-white/[0.1]">
-                  <Link href={`/players/${t.id}`} className="text-[1.0625rem] decoration-season-ink/40 underline-offset-4 hover:underline">
+                  <Link prefetch={false} href={`/players/${t.id}`} className="text-[1.0625rem] decoration-season-ink/40 underline-offset-4 hover:underline">
                     {t.name}
                   </Link>
                   {t.wins.length > 1 && <span className="ml-2 text-[0.9375rem] font-semibold tabular-nums text-season-amber">×{t.wins.length}</span>}
@@ -197,7 +197,7 @@ export default async function HallOfFamePage() {
                   <Seal seal={seal} px={56} label={`${title}: ${fmt(top.value)}`} />
                   <div className="min-w-0 text-[0.875rem] leading-snug">
                     <h3 className="text-season-muted">{title}</h3>
-                    <Link href={`/players/${top.player_id}`} className="block [overflow-wrap:anywhere] decoration-season-ink/40 underline-offset-4 hover:underline">
+                    <Link prefetch={false} href={`/players/${top.player_id}`} className="block [overflow-wrap:anywhere] decoration-season-ink/40 underline-offset-4 hover:underline">
                       {top.display_name}
                     </Link>
                     <p className={`tabular-nums ${money ? "text-season-ink/75" : "text-[1rem] font-semibold text-season-amber"}`}>{money ? fmt(top.value) : Number(top.value).toLocaleString("en-GB")}</p>

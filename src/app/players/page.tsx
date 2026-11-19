@@ -28,7 +28,7 @@ function SortTh({ col, sort, href, className = "", children }: { col: AllTimeSor
   const on = sort === col;
   return (
     <th scope="col" aria-sort={on ? "descending" : undefined} className={`pb-3 pl-5 text-right font-medium ${className}`}>
-      <Link href={href} scroll={false} className={`inline-flex min-h-8 items-center gap-1 whitespace-nowrap transition-colors ${on ? "text-season-ink" : "hover:text-season-ink"}`}>
+      <Link prefetch={false} href={href} scroll={false} className={`inline-flex min-h-8 items-center gap-1 whitespace-nowrap transition-colors ${on ? "text-season-ink" : "hover:text-season-ink"}`}>
         {children}
         {on ? <ArrowDown size={13} strokeWidth={2.5} className="text-season-amber" aria-hidden="true" /> : null}
         <span className="sr-only">{on ? "(ranked by this)" : "(rank by this)"}</span>
@@ -117,13 +117,13 @@ export default async function PlayersPage(props: { searchParams: Promise<{ q?: s
             </div>
             <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
               {q && (
-                <Link href={href({ sort })} className="inline-flex min-h-11 items-center text-[0.9375rem] font-medium text-season-amber hover:underline">
+                <Link prefetch={false} href={href({ sort })} className="inline-flex min-h-11 items-center text-[0.9375rem] font-medium text-season-amber hover:underline">
                   Clear search
                 </Link>
               )}
               <nav aria-label="Rank players by" className="inline-flex rounded-[3px] border border-white/[0.12]">
                 {SORTS.filter((s) => s.inSwitch).map((s) => (
-                  <Link
+                  <Link prefetch={false}
                     key={s.key}
                     href={href({ q, sort: s.key })}
                     aria-current={sort === s.key ? "page" : undefined}
@@ -165,7 +165,7 @@ export default async function PlayersPage(props: { searchParams: Promise<{ q?: s
                     <tr key={r.player_id} className="border-b border-white/[0.07] transition-colors hover:bg-white/[0.025]">
                       <td className={`pr-4 text-[1.0625rem] font-semibold ${podium ? "text-season-amber" : ""}`}>{r.position}</td>
                       <td className="max-w-0">
-                        <Link href={`/players/${r.player_id}`} className="group flex min-h-14 min-w-0 items-center gap-3">
+                        <Link prefetch={false} href={`/players/${r.player_id}`} className="group flex min-h-14 min-w-0 items-center gap-3">
                           <span className={`min-w-0 truncate text-[1.0625rem] decoration-season-ink/40 underline-offset-4 group-hover:underline ${podium ? "font-semibold" : ""}`}>
                             {r.display_name}
                           </span>
@@ -236,7 +236,7 @@ function PagerArrow({ dir, href }: { dir: "prev" | "next"; href: string | null }
       </span>
     );
   return (
-    <Link href={href} className={`${cls} hover:bg-white/[0.06]`} aria-label={label}>
+    <Link prefetch={false} href={href} className={`${cls} hover:bg-white/[0.06]`} aria-label={label}>
       <Icon size={18} aria-hidden="true" />
       <PendingDot corner />
     </Link>

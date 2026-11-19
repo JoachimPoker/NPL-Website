@@ -65,7 +65,7 @@ function Switch({ label, children }: { label: string; children: React.ReactNode 
 
 function SwitchLink({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
   return (
-    <Link
+    <Link prefetch={false}
       href={href}
       aria-current={active ? "page" : undefined}
       className={`-m-px flex h-11 shrink-0 items-center whitespace-nowrap rounded-[3px] px-[1.1rem] text-[0.9375rem] font-medium transition-colors ${
@@ -194,7 +194,7 @@ export default async function LeaderboardsPage(props: { searchParams: Promise<SP
               {!current && !allTime && (
                 <Crown className="size-[0.7em] text-season-amber" strokeWidth={2.25} aria-label={`${season!.year} champion`} role="img" />
               )}
-              <Link href={`/players/${leader.player_id}`} className="[overflow-wrap:anywhere] hover:underline hover:decoration-season-ink/40 hover:underline-offset-[0.12em]">
+              <Link prefetch={false} href={`/players/${leader.player_id}`} className="[overflow-wrap:anywhere] hover:underline hover:decoration-season-ink/40 hover:underline-offset-[0.12em]">
                 {leader.display_name}
               </Link>
             </p>
@@ -277,7 +277,7 @@ export default async function LeaderboardsPage(props: { searchParams: Promise<SP
                 </a>
               )}
               {q && (
-                <Link href={href({ q: undefined })} className="inline-flex min-h-11 items-center text-[0.9375rem] font-medium text-season-amber hover:underline">
+                <Link prefetch={false} href={href({ q: undefined })} className="inline-flex min-h-11 items-center text-[0.9375rem] font-medium text-season-amber hover:underline">
                   Clear search
                 </Link>
               )}
@@ -325,7 +325,7 @@ export default async function LeaderboardsPage(props: { searchParams: Promise<SP
                       </td>
                       {/* max-w-0 lets the name truncate inside an auto-width table instead of widening it. */}
                       <td className="max-w-0">
-                        <Link href={`/players/${r.player_id}`} className="group flex min-h-14 min-w-0 items-center gap-3 sm:min-h-[3.75rem]">
+                        <Link prefetch={false} href={`/players/${r.player_id}`} className="group flex min-h-14 min-w-0 items-center gap-3 sm:min-h-[3.75rem]">
                           <span
                             className={`min-w-0 truncate text-[1.0625rem] decoration-season-ink/40 underline-offset-4 group-hover:underline sm:text-lg ${podium ? "font-semibold" : "font-normal"}`}
                           >
@@ -403,7 +403,7 @@ export default async function LeaderboardsPage(props: { searchParams: Promise<SP
                     p === 0 ? (
                       <span key={`gap-${i}`} className="hidden px-1 text-season-muted sm:inline">…</span>
                     ) : (
-                      <Link
+                      <Link prefetch={false}
                         key={p}
                         href={pageHref(p)}
                         aria-current={p === page ? "page" : undefined}
@@ -445,7 +445,7 @@ export default async function LeaderboardsPage(props: { searchParams: Promise<SP
                     const Icon = w.label.startsWith("Biggest") ? TrendingUp : w.label.startsWith("New") ? Trophy : Zap;
                     return (
                       <li key={w.label} className="border-b border-white/[0.08]">
-                        <Link href={`/players/${w.player_id}`} className="group flex items-center gap-4 py-4">
+                        <Link prefetch={false} href={`/players/${w.player_id}`} className="group flex items-center gap-4 py-4">
                           <Icon size={20} strokeWidth={2} className="shrink-0 text-season-amber" aria-hidden="true" />
                           <span className="min-w-0">
                             <span className="block text-[0.9375rem] text-season-muted">{w.label}</span>
@@ -509,7 +509,7 @@ function PagerArrow({ dir, href }: { dir: "prev" | "next"; href: string | null }
       </span>
     );
   return (
-    <Link href={href} className={`${cls} hover:bg-white/[0.06]`} aria-label={label}>
+    <Link prefetch={false} href={href} className={`${cls} hover:bg-white/[0.06]`} aria-label={label}>
       <Icon size={18} aria-hidden="true" />
       <PendingDot corner />
     </Link>

@@ -100,7 +100,7 @@ export default async function FestivalPage(props: { params: Promise<{ seriesId: 
                 <h2 id="main-event" className="text-[1.0625rem] font-medium text-season-ink/75">{main ? eventName(main.name) : "Main Event"} won by</h2>
                 <p className="text-[clamp(1.75rem,2.8vw,2.75rem)] font-bold leading-[1.05] tracking-[-0.01em] text-season-amber">
                   {festival.main_event_winner_id ? (
-                    <Link href={`/players/${festival.main_event_winner_id}`} className="hover:underline hover:decoration-season-amber/50 hover:underline-offset-4">{festival.main_event_winner}</Link>
+                    <Link prefetch={false} href={`/players/${festival.main_event_winner_id}`} className="hover:underline hover:decoration-season-amber/50 hover:underline-offset-4">{festival.main_event_winner}</Link>
                   ) : (
                     festival.main_event_winner
                   )}
@@ -181,7 +181,7 @@ export default async function FestivalPage(props: { params: Promise<{ seriesId: 
                     <tr key={p.id} className="border-b border-white/[0.07] transition-colors hover:bg-white/[0.025]">
                       <td className={`pr-3 font-semibold ${i < 3 ? "text-season-amber" : ""}`}>{i + 1}</td>
                       <td className="max-w-0">
-                        <Link href={`/players/${p.id}`} className={`block truncate py-3 decoration-season-ink/40 underline-offset-4 hover:underline ${i < 3 ? "font-semibold" : ""}`}>{p.name}</Link>
+                        <Link prefetch={false} href={`/players/${p.id}`} className={`block truncate py-3 decoration-season-ink/40 underline-offset-4 hover:underline ${i < 3 ? "font-semibold" : ""}`}>{p.name}</Link>
                       </td>
                       <td className="pl-4 text-right text-season-ink/80">{p.events}</td>
                       <td className={`whitespace-nowrap pl-4 text-right font-semibold ${i < 3 ? "text-season-amber" : ""}`}>{p.points.toFixed(2)}</td>

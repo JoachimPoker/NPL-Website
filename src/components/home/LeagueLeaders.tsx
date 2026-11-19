@@ -26,7 +26,7 @@ const ordinal = (n: number) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 
 function Name({ row, className }: { row: LeaderRow; className: string }) {
   if (row.is_anonymized || !row.player_id) return <span className={className}>{row.display_name}</span>;
   return (
-    <Link href={`/players/${row.player_id}`} className={`${className} hover:underline hover:decoration-season-ink/40 hover:underline-offset-4`}>
+    <Link prefetch={false} href={`/players/${row.player_id}`} className={`${className} hover:underline hover:decoration-season-ink/40 hover:underline-offset-4`}>
       {row.display_name}
     </Link>
   );

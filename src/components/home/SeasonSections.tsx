@@ -75,7 +75,7 @@ export async function ThisWeek({ gainers: allGainers }: { gainers: Gainer[] }) {
                 <span className="sr-only"> places</span>
               </p>
               <Link
-                href={`/players/${g.player_id}`}
+                prefetch={false} href={`/players/${g.player_id}`}
                 className="mt-2 inline-block text-[clamp(1.125rem,1.45vw,1.5rem)] font-semibold leading-snug hover:underline hover:decoration-season-ink/40 hover:underline-offset-4"
               >
                 {g.display_name}

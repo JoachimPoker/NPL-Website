@@ -60,7 +60,7 @@ function Corner({ career, side }: { career: Career; side: "a" | "b" }) {
     <div className={`min-w-0 ${right ? "md:text-right" : ""}`}>
       {career ? (
         <Link
-          href={`/players/${career.player.id}`}
+          prefetch={false} href={`/players/${career.player.id}`}
           className="block text-[clamp(1.75rem,2.8vw,3rem)] font-bold leading-[1.04] tracking-[-0.012em] [overflow-wrap:anywhere] hover:underline hover:decoration-season-ink/40 hover:underline-offset-[0.12em]"
         >
           {career.player.name}

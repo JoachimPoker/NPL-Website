@@ -63,7 +63,7 @@ export default async function TournamentsPage(props: { searchParams: Promise<{ s
             {(seasons || []).map((s) => {
               const on = s.id === season?.id;
               return (
-                <Link
+                <Link prefetch={false}
                   key={s.id}
                   href={s.is_active ? "/events" : `/events?season=${s.year}`}
                   aria-current={on ? "page" : undefined}
@@ -94,7 +94,7 @@ export default async function TournamentsPage(props: { searchParams: Promise<{ s
             <ul className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
               {latest.map((e) => (
                 <li key={e.id} className="min-w-0">
-                  <Link href={eventHref(e.id)} className={`${card} group flex h-full flex-col gap-3 p-4 transition-colors hover:border-white/20`}>
+                  <Link prefetch={false} href={eventHref(e.id)} className={`${card} group flex h-full flex-col gap-3 p-4 transition-colors hover:border-white/20`}>
                     <span className="text-[0.875rem] tabular-nums text-season-muted">{day(e.start_date)}</span>
                     <span className="flex h-6 items-center">{e.series_id && <Badge series={seriesById.get(e.series_id)} className="h-6" />}</span>
                     <span className="line-clamp-2 text-[0.9375rem] font-medium leading-snug decoration-season-ink/40 underline-offset-4 group-hover:underline">{eventTitle(e.name)}</span>
@@ -121,7 +121,7 @@ export default async function TournamentsPage(props: { searchParams: Promise<{ s
               const p = perSeries.get(s.id);
               return (
                 <li key={s.id}>
-                  <Link href={`/events/${s.slug}`} className={`${card} group flex h-full flex-col items-center justify-center gap-2 px-4 py-4 text-center transition-colors hover:border-white/25`}>
+                  <Link prefetch={false} href={`/events/${s.slug}`} className={`${card} group flex h-full flex-col items-center justify-center gap-2 px-4 py-4 text-center transition-colors hover:border-white/25`}>
                     <span className="flex h-9 items-center justify-center">
                       {s.logo_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -140,7 +140,7 @@ export default async function TournamentsPage(props: { searchParams: Promise<{ s
           </ul>
           <p className="mt-5 text-[0.9375rem] text-season-muted">
             Looking for a casino?{" "}
-            <Link href="/venues" className="font-medium text-season-ink underline decoration-season-ink/30 underline-offset-4 hover:decoration-season-ink">Browse all venues</Link>
+            <Link prefetch={false} href="/venues" className="font-medium text-season-ink underline decoration-season-ink/30 underline-offset-4 hover:decoration-season-ink">Browse all venues</Link>
           </p>
         </section>
 

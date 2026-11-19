@@ -90,7 +90,7 @@ export async function generateMetadata(props: { params: Promise<{ id: string }> 
 /** A player's name, linked to their profile when there is one. */
 function PlayerName({ id, name, className = "" }: { id?: number; name: string; className?: string }) {
   if (!id) return <span className={className}>{name}</span>;
-  return <Link href={`/players/${id}`} className={`${className} decoration-current/40 underline-offset-4 hover:underline`}>{name}</Link>;
+  return <Link prefetch={false} href={`/players/${id}`} className={`${className} decoration-current/40 underline-offset-4 hover:underline`}>{name}</Link>;
 }
 
 export default async function EventPage(props: { params: Promise<{ id: string }> }) {

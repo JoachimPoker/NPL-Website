@@ -98,7 +98,7 @@ export default async function VenuePage(props: { params: Promise<{ slug: string 
                     <tr key={p.player_id} className="border-b border-white/[0.07]">
                       <td className="pr-3 text-season-muted">{i + 1}</td>
                       <td className="max-w-0">
-                        <Link href={`/players/${p.player_id}`} className="block truncate py-3 font-medium decoration-season-ink/40 underline-offset-4 hover:underline">{p.display_name}</Link>
+                        <Link prefetch={false} href={`/players/${p.player_id}`} className="block truncate py-3 font-medium decoration-season-ink/40 underline-offset-4 hover:underline">{p.display_name}</Link>
                       </td>
                       <td className="pl-4 text-right">{p.cashes}</td>
                       <td className="pl-4 text-right">{p.wins || <span className="text-season-muted">–</span>}</td>

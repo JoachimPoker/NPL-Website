@@ -152,7 +152,7 @@ function ResultsTable({ rows, prize = true }: { rows: ResultRow[]; prize?: boole
             <tr key={r.id} className="border-b border-white/[0.07] transition-colors hover:bg-white/[0.025]">
               <td className="hidden whitespace-nowrap py-4 pr-6 tabular-nums text-season-muted sm:table-cell">{date(r.date)}</td>
               <td className="max-w-0 py-3.5">
-                <Link href={`/events/e/${r.event_id}`} className="block truncate text-[1.0625rem] font-medium decoration-season-ink/40 underline-offset-4 hover:underline" title={r.event_name}>
+                <Link prefetch={false} href={`/events/e/${r.event_id}`} className="block truncate text-[1.0625rem] font-medium decoration-season-ink/40 underline-offset-4 hover:underline" title={r.event_name}>
                   {eventTitle(r.event_name)}
                 </Link>
                 <span className="block truncate text-[0.875rem] text-season-muted">
@@ -211,7 +211,7 @@ function ResultTh({ col, sort, dir, href, className = "", children }: { col: Res
   const Arrow = dir === "asc" ? ArrowUp : ArrowDown;
   return (
     <th scope="col" aria-sort={on ? (dir === "asc" ? "ascending" : "descending") : undefined} className={`pb-2 font-medium ${className}`}>
-      <Link href={href(col, next)} scroll={false} className={`inline-flex min-h-8 items-center gap-1 whitespace-nowrap transition-colors ${on ? "text-season-ink" : "hover:text-season-ink"}`}>
+      <Link prefetch={false} href={href(col, next)} scroll={false} className={`inline-flex min-h-8 items-center gap-1 whitespace-nowrap transition-colors ${on ? "text-season-ink" : "hover:text-season-ink"}`}>
         {children}
         {on && <Arrow size={13} strokeWidth={2.5} className="text-season-amber" aria-hidden="true" />}
         <span className="sr-only">{on ? `(sorted ${dir === "asc" ? "ascending" : "descending"}; click to reverse)` : "(sort by this)"}</span>
@@ -244,7 +244,7 @@ function CompactResults({ rows, sort, dir, sortHref }: { rows: ResultRow[]; sort
                 {r.date ? new Date(r.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" }) : "–"}
               </td>
               <td className="max-w-0 py-2.5">
-                <Link href={`/events/e/${r.event_id}`} className="block truncate decoration-season-ink/40 underline-offset-4 hover:underline" title={`${r.event_name}${r.casino ? ` · ${r.casino}` : ""}`}>
+                <Link prefetch={false} href={`/events/e/${r.event_id}`} className="block truncate decoration-season-ink/40 underline-offset-4 hover:underline" title={`${r.event_name}${r.casino ? ` · ${r.casino}` : ""}`}>
                   <span className="font-medium">{eventTitle(r.event_name)}</span>
                   {r.casino && <span className="hidden text-season-muted lg:inline"> · {r.casino}</span>}
                 </Link>
@@ -312,7 +312,7 @@ export default async function PlayerProfile(props: {
           <p className="mt-3 max-w-[32em] text-[clamp(1.0625rem,1.2vw,1.25rem)] text-season-ink/85">
             This profile doesn&apos;t exist or may have been merged with another.
           </p>
-          <Link href="/players" className={`${more} mt-4`}>
+          <Link prefetch={false} href="/players" className={`${more} mt-4`}>
             <ArrowLeft size={17} strokeWidth={2.25} aria-hidden="true" /> All players
           </Link>
         </Hero>
@@ -420,7 +420,7 @@ export default async function PlayerProfile(props: {
               {titles.slice(0, 3).map((t) => <TitleItem key={t.def.key} title={t} />)}
             </ul>
             {titles.length > 3 && (
-              <Link href={`${base}?tab=achievements`} scroll={false} className={`${more} mt-2`}>
+              <Link prefetch={false} href={`${base}?tab=achievements`} scroll={false} className={`${more} mt-2`}>
                 All {totalTitles} titles
                 <ArrowRight size={17} strokeWidth={2.25} aria-hidden="true" className="transition-transform group-hover:translate-x-0.5" />
               </Link>
@@ -434,7 +434,7 @@ export default async function PlayerProfile(props: {
         <div className="flex flex-col-reverse gap-4 border-b border-white/[0.1] md:flex-row md:items-end md:justify-between">
           <nav aria-label="Player sections" className="no-scrollbar -mx-4 flex gap-8 overflow-x-auto px-4 md:mx-0 md:px-0">
             {TABS.map((t) => (
-              <Link
+              <Link prefetch={false}
                 key={t.key}
                 href={t.key === "overview" ? base : `${base}?tab=${t.key}`}
                 scroll={false}
@@ -450,7 +450,7 @@ export default async function PlayerProfile(props: {
             ))}
           </nav>
           <div className="flex flex-wrap gap-3 md:pb-2.5">
-            <Link
+            <Link prefetch={false}
               href={`/compare?a=${p.id}`}
               className="inline-flex h-11 items-center gap-2 rounded-[3px] border border-white/[0.14] px-4 text-[0.9375rem] font-medium transition-colors hover:border-white/30"
             >
@@ -480,7 +480,7 @@ export default async function PlayerProfile(props: {
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={mark.src} alt={label} width={mark.width} height={mark.height} className="block h-[1.125rem] w-auto max-w-full object-contain object-left sm:h-[1.375rem]" />
                             {l ? (
-                              <Link href={`/leaderboards${slug === "npl" ? "" : `?league=${slug}`}`} className="mt-3 block hover:underline hover:decoration-season-ink/40 hover:underline-offset-4">
+                              <Link prefetch={false} href={`/leaderboards${slug === "npl" ? "" : `?league=${slug}`}`} className="mt-3 block hover:underline hover:decoration-season-ink/40 hover:underline-offset-4">
                                 <span className={`block text-[clamp(1.75rem,2.6vw,2.5rem)] font-bold leading-none tabular-nums ${l.position <= 3 ? "text-season-amber" : "text-season-ink"}`}>
                                   {ordinal(l.position)}
                                 </span>
@@ -527,7 +527,7 @@ export default async function PlayerProfile(props: {
                   <ResultsTable rows={all_results.slice(0, 5)} prize={false} />
                 </div>
                 {all_results.length > 5 && (
-                  <Link href={`${base}?tab=results`} scroll={false} className={`${more} mt-2`}>
+                  <Link prefetch={false} href={`${base}?tab=results`} scroll={false} className={`${more} mt-2`}>
                     All {all_results.length} results
                     <ArrowRight size={17} strokeWidth={2.25} aria-hidden="true" className="transition-transform group-hover:translate-x-0.5" />
                   </Link>
@@ -594,7 +594,7 @@ export default async function PlayerProfile(props: {
                   <ol className="mt-5 border-t border-white/[0.12]">
                     {best_results.map((r) => (
                       <li key={r.id} className="border-b border-white/[0.07]">
-                        <Link href={`/events/e/${r.event_id}`} className="group flex items-baseline justify-between gap-4 py-3.5">
+                        <Link prefetch={false} href={`/events/e/${r.event_id}`} className="group flex items-baseline justify-between gap-4 py-3.5">
                           <span className="min-w-0">
                             <span className="block truncate text-[1.0625rem] font-medium decoration-season-ink/40 underline-offset-4 group-hover:underline" title={r.event_name}>
                               {eventTitle(r.event_name)}
@@ -618,7 +618,7 @@ export default async function PlayerProfile(props: {
                 <span className="text-[0.9375rem] text-season-muted">{achievements.filter((a) => a.level).length} of {achievements.length} started</span>
               </div>
               <AchievementList items={rankedAchievements.slice(0, 4)} className="mt-3 grid gap-x-12 md:grid-cols-2" />
-              <Link href={`${base}?tab=achievements`} scroll={false} className={`${more} mt-2`}>
+              <Link prefetch={false} href={`${base}?tab=achievements`} scroll={false} className={`${more} mt-2`}>
                 All {achievements.length} achievements
                 <ArrowRight size={17} strokeWidth={2.25} aria-hidden="true" className="transition-transform group-hover:translate-x-0.5" />
               </Link>
@@ -632,17 +632,17 @@ export default async function PlayerProfile(props: {
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="mr-2 w-14 text-[0.9375rem] text-season-muted">Season</span>
-                <Link href={filterHref(null, seriesFilter)} scroll={false} className={chip(!seasonFilter)} aria-current={!seasonFilter ? "page" : undefined}>All</Link>
+                <Link prefetch={false} href={filterHref(null, seriesFilter)} scroll={false} className={chip(!seasonFilter)} aria-current={!seasonFilter ? "page" : undefined}>All</Link>
                 {seasonYears.map((y) => (
-                  <Link key={y} href={filterHref(y, seriesFilter)} scroll={false} className={chip(seasonFilter === y)} aria-current={seasonFilter === y ? "page" : undefined}>{y}</Link>
+                  <Link prefetch={false} key={y} href={filterHref(y, seriesFilter)} scroll={false} className={chip(seasonFilter === y)} aria-current={seasonFilter === y ? "page" : undefined}>{y}</Link>
                 ))}
               </div>
               {playerSeries.length > 1 && (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="mr-2 w-14 text-[0.9375rem] text-season-muted">Series</span>
-                  <Link href={filterHref(seasonFilter, null)} scroll={false} className={chip(!seriesFilter)} aria-current={!seriesFilter ? "page" : undefined}>All</Link>
+                  <Link prefetch={false} href={filterHref(seasonFilter, null)} scroll={false} className={chip(!seriesFilter)} aria-current={!seriesFilter ? "page" : undefined}>All</Link>
                   {playerSeries.map((x) => (
-                    <Link key={x.id} href={filterHref(seasonFilter, x.id)} scroll={false} className={chip(seriesFilter === x.id)} aria-current={seriesFilter === x.id ? "page" : undefined}>{x.name}</Link>
+                    <Link prefetch={false} key={x.id} href={filterHref(seasonFilter, x.id)} scroll={false} className={chip(seriesFilter === x.id)} aria-current={seriesFilter === x.id ? "page" : undefined}>{x.name}</Link>
                   ))}
                 </div>
               )}
@@ -671,7 +671,7 @@ export default async function PlayerProfile(props: {
                   </span>
                   <div className="flex flex-wrap items-center justify-end gap-1">
                     {Array.from({ length: resultPages }, (_, i) => i + 1).map((n) => (
-                      <Link
+                      <Link prefetch={false}
                         key={n}
                         href={`${filterHref(seasonFilter, seriesFilter, n)}#results-list`}
                         scroll={false}
@@ -697,7 +697,7 @@ export default async function PlayerProfile(props: {
             <section aria-labelledby="all-titles">
               <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
                 <h2 id="all-titles" className={h2}>Trophy cabinet</h2>
-                <Link href="/badges" className="text-[0.9375rem] text-season-muted hover:text-season-ink">
+                <Link prefetch={false} href="/badges" className="text-[0.9375rem] text-season-muted hover:text-season-ink">
                   {totalTitles} title{totalTitles === 1 ? "" : "s"} · all badges
                 </Link>
               </div>
@@ -713,7 +713,7 @@ export default async function PlayerProfile(props: {
             <section aria-labelledby="all-achievements">
               <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
                 <h2 id="all-achievements" className={h2}>Achievements</h2>
-                <Link href="/badges?tab=achievements" className="text-[0.9375rem] text-season-muted hover:text-season-ink">
+                <Link prefetch={false} href="/badges?tab=achievements" className="text-[0.9375rem] text-season-muted hover:text-season-ink">
                   {achievements.filter((a) => a.level).length} of {achievements.length} started · all levels
                 </Link>
               </div>
@@ -725,11 +725,11 @@ export default async function PlayerProfile(props: {
         {/* The way for a player to ask for their name to come off the site, or a result to be corrected. */}
         <p className="mt-[clamp(3rem,5vw,4.5rem)] border-t border-white/[0.08] pt-5 text-[0.9375rem] text-season-muted">
           Is this you? You can{" "}
-          <Link href="/contact?topic=privacy" className="text-season-ink underline decoration-season-ink/30 underline-offset-4 hover:decoration-season-ink">
+          <Link prefetch={false} href="/contact?topic=privacy" className="text-season-ink underline decoration-season-ink/30 underline-offset-4 hover:decoration-season-ink">
             ask to be shown by initials
           </Link>{" "}
           or{" "}
-          <Link href="/contact?topic=correction" className="text-season-ink underline decoration-season-ink/30 underline-offset-4 hover:decoration-season-ink">
+          <Link prefetch={false} href="/contact?topic=correction" className="text-season-ink underline decoration-season-ink/30 underline-offset-4 hover:decoration-season-ink">
             report a wrong result
           </Link>
           .

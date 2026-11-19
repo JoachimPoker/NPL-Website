@@ -7,6 +7,8 @@ const AI_CRAWLERS = [
   "GPTBot", "ChatGPT-User", "OAI-SearchBot", "ClaudeBot", "Claude-User", "Claude-SearchBot", "anthropic-ai",
   "CCBot", "Google-Extended", "Applebot-Extended", "Bytespider", "meta-externalagent", "PerplexityBot",
   "Amazonbot", "cohere-ai", "Diffbot", "ImagesiftBot", "Omgilibot", "Timpibot",
+  // Amazon's shopping/Alexa search and SEO backlink tools: about a third of all traffic, no visitors in return.
+  "Amzn-SearchBot", "SERankingBacklinksBot", "SemrushBot", "AhrefsBot", "MJ12bot", "DotBot",
 ];
 
 export default function robots(): MetadataRoute.Robots {
